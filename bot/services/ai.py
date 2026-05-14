@@ -3,7 +3,7 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from typing import List, Dict, Optional
 
 class AIService:
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model_name: str = "gemini-3.0-flash"):
         genai.configure(api_key=api_key)
         
         self.safety_settings = {
