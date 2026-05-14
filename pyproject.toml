@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "safety-chat-bot"
+version = "0.1.0"
+description = "AI-powered Telegram moderation and community bot"
+authors = ["Admin <contact@srvrs.top>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+aiogram = "^3.4.1"
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.29"}
+asyncpg = "^0.29.0"
+alembic = "^1.13.1"
+pydantic = "^2.7.0"
+pydantic-settings = "^2.2.1"
+google-generativeai = "^0.5.2"
+structlog = "^24.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.1"
+pytest-asyncio = "^0.23.6"
+pytest-mock = "^3.14.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
