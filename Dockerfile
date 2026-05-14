@@ -17,4 +17,4 @@ RUN poetry config virtualenvs.create false \
 COPY . .
 
 # Запуск
-CMD ["python", "bot/main.py"]
+CMD ["python", "-m", "bot.main"]
