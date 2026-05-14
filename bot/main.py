@@ -1,5 +1,6 @@
 import asyncio
-import structlog
+import logging
+import sys
 from aiogram import Bot, Dispatcher
 from bot.config import load_config
 from bot.database.engine import create_db_pool
@@ -7,21 +8,39 @@ from bot.middlewares.db import DbSessionMiddleware
 from bot.handlers.reactions import router as reactions_router
 from bot.handlers.messages import router as messages_router
 
-logger = structlog.get_logger()
+from aiogram.types import Update
+
+# Налаштування логування
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 
 async def main():
     config = load_config()
     bot = Bot(token=config.bot_token.get_secret_value())
     dp = Dispatcher()
     
-    engine, session_pool = create_db_pool(config.database_url.get_secret_value())
-    dp.update.middleware(DbSessionMiddleware(session_pool=session_pool))
+    # Debug: логування абсолютно всіх вхідних апдейтів
+    @dp.update.outer_middleware()
+    async def update_logger(handler, event: Update, data):
+        logger.info(f"DEBUG: Incoming update type: {event.event_type}")
+        return await handler(event, data)
     
-    # Handlers will be registered here
+    engine, session_pool = create_db_pool(config.database_url.get_secret_value())
+    
+    # Реєстрація мідлварі для різних типів апдейтів
+    middleware = DbSessionMiddleware(session_pool=session_pool)
+    dp.message.middleware(middleware)
+    dp.message_reaction.middleware(middleware)
+    
+    # Handlers
     dp.include_router(reactions_router)
     dp.include_router(messages_router)
     
-    logger.info("Starting bot")
+    logger.info("Starting bot...")
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 if __name__ == "__main__":
