@@ -1,5 +1,10 @@
 # 🛡️ Safety-chat-bot v0.2.0
 
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/weby-homelab/safety-chat-bot?style=flat-square&color=blue)](https://github.com/weby-homelab/safety-chat-bot/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/webyhomelab/safety-chat-bot?style=flat-square&color=green)](https://hub.docker.com/r/webyhomelab/safety-chat-bot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python)](https://www.python.org/)
+
 Сучасний, легкий та повністю безкоштовний Telegram-бот для модерації та управління спільнотами. Побудований на базі **Aiogram 3** та **PostgreSQL**.
 
 ## ✨ Основні можливості
@@ -9,6 +14,27 @@
 - **👥 Авто-реєстрація:** Бот автоматично створює профілі для нових учасників чату при їх першій активності.
 - **📊 Команда `/karma`:** Можливість миттєво перевірити свій рівень репутації в чаті.
 - **⚙️ Надійна Архітектура:** Використання SQLAlchemy 2.0, Alembic для міграцій та Docker для швидкого розгортання.
+
+## 🏗 Архітектура
+
+```mermaid
+graph TD;
+    User[Користувач Telegram] -->|Повідомлення / Реакції| Bot[Safety-chat-bot]
+    
+    subgraph Telegram Bot
+        Bot --> Middleware[DbSessionMiddleware]
+        Middleware --> Router1[Reactions Handler]
+        Middleware --> Router2[Messages Handler]
+    end
+    
+    subgraph Database Layer
+        Router1 --> DB[(PostgreSQL)]
+        Router2 --> DB
+        DB --> Users[Users Table]
+        DB --> Chats[Chats Table]
+        DB --> Karma[KarmaRecords Table]
+    end
+```
 
 ## 🚀 Швидкий старт (Docker)
 
@@ -32,13 +58,17 @@
 ## 🛠 Технологічний стек
 
 - **Python 3.11+**
-- **Aiogram 3.x** (Асинхронна робота з API)
+- **Aiogram 3.x**
 - **PostgreSQL** + **SQLAlchemy 2.0**
-- **Alembic** (Керування структурою БД)
+- **Alembic**
 - **Docker** & **Docker Compose**
 
 ## 📝 Важливе налаштування
 Для коректної роботи карми та антиспаму, вимкніть **Group Privacy** у @BotFather та надайте боту права адміністратора на видалення повідомлень.
 
-## 📄 Ліцензія
-MIT License. Побудовано з любов'ю для затишних спільнот.
+##
+
+<p align="center">
+  Built in Ukraine under air raid sirens &amp; blackouts ⚡<br>
+  &copy; 2026 Weby Homelab
+</p>
