@@ -1,10 +1,13 @@
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from typing import List, Dict, Optional
+import google.auth
 
 class AIService:
-    def __init__(self, api_key: str, model_name: str = "gemini-3.0-flash"):
-        genai.configure(api_key=api_key)
+    def __init__(self, model_name: str = "gemini-3.0-flash"):
+        # Авторизація через Google Account (Service Account)
+        credentials, _ = google.auth.default()
+        genai.configure(credentials=credentials)
         
         self.safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,

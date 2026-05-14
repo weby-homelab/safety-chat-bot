@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./credentials.json:/app/credentials.json:ro
     depends_on:
       db:
         condition: service_healthy

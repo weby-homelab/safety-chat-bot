@@ -46,10 +46,13 @@ graph TD;
    cd safety-chat-bot
    ```
 
-2. **Налаштуйте змінні середовища:**
+2. **Налаштуйте змінні середовища та авторизацію:**
    ```bash
    cp .env.example .env
-   # Відредагуйте .env, додавши ваші BOT_TOKEN та GEMINI_API_KEY
+   # Відредагуйте .env, додавши ваш BOT_TOKEN
+   
+   # Помістіть ваш сервісний ключ GCP (Service Account JSON) у корінь проєкту:
+   # Файл обов'язково має називатися credentials.json
    ```
 
 3. **Запустіть через Docker Compose:**
