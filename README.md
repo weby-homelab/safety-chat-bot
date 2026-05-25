@@ -1,4 +1,4 @@
-# 🛡️ Safety-chat-bot v0.2.0
+# 🛡️ Safety-chat-bot v0.3.0
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/weby-homelab/safety-chat-bot?style=flat-square&color=blue)](https://github.com/weby-homelab/safety-chat-bot/releases)
 [![Docker Pulls](https://img.shields.io/docker/pulls/webyhomelab/safety-chat-bot?style=flat-square&color=green)](https://hub.docker.com/r/webyhomelab/safety-chat-bot)
