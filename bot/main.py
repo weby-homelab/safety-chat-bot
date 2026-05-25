@@ -7,6 +7,7 @@ from bot.database.engine import create_db_pool
 from bot.middlewares.db import DbSessionMiddleware
 from bot.handlers.reactions import router as reactions_router
 from bot.handlers.messages import router as messages_router
+from bot.services.moderation import load_dynamic_blacklists
 
 from aiogram.types import Update
 
@@ -18,7 +19,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Global session pool reference for commands/handlers
+session_pool_global = None
+
 async def main():
+    global session_pool_global
     config = load_config()
     bot = Bot(token=config.bot_token.get_secret_value())
     dp = Dispatcher()
@@ -30,11 +35,16 @@ async def main():
         return await handler(event, data)
     
     engine, session_pool = create_db_pool(config.database_url.get_secret_value())
+    session_pool_global = session_pool
+    
+    # Load dynamic blacklists on startup
+    await load_dynamic_blacklists(session_pool)
     
     # Реєстрація мідлварі для різних типів апдейтів
     middleware = DbSessionMiddleware(session_pool=session_pool)
     dp.message.middleware(middleware)
     dp.message_reaction.middleware(middleware)
+    dp.callback_query.middleware(middleware)
     
     # Handlers
     dp.include_router(reactions_router)

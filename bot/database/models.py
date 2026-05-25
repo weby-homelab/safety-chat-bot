@@ -37,3 +37,11 @@ class KarmaRecord(Base):
         Index('idx_karma_user_chat', 'user_id', 'chat_id'),
         Index('idx_karma_message', 'message_id'),
     )
+
+class BannedDomain(Base):
+    __tablename__ = "banned_domains"
+    domain: Mapped[str] = mapped_column(String(128), primary_key=True)
+
+class BannedKeyword(Base):
+    __tablename__ = "banned_keywords"
+    keyword: Mapped[str] = mapped_column(String(128), primary_key=True)
