@@ -11,7 +11,8 @@ COPY pyproject.toml poetry.lock* ./
 
 # Встановлення залежностей (без створення віртуального середовища, оскільки це Docker)
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --without dev
+    && poetry install --no-interaction --no-ansi --without dev \
+    && pip install --no-deps "aiohttp>=3.14.1"
 
 # Копіювання коду бота
 COPY . .
