@@ -103,12 +103,17 @@ def check_fast_heuristics(text: str) -> bool:
         
     text_lower = text.lower()
     
+    # Mask whitelisted domains to prevent false positives with generic TLD blocks (.top, .online)
+    text_for_domains = text_lower
+    for whitelist in ["srvrs.top", "srvrs.online"]:
+        text_for_domains = text_for_domains.replace(whitelist, "[whitelist]")
+    
     # 1. Перевірка за доменами (static + dynamic)
     for banned in BANNED_DOMAINS:
-        if banned in text_lower:
+        if banned in text_for_domains:
             return True
     for banned in DYNAMIC_BANNED_DOMAINS:
-        if banned in text_lower:
+        if banned in text_for_domains:
             return True
             
     # 2. Перевірка за посиланнями на канали
