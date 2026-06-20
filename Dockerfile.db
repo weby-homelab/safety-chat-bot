@@ -1,0 +1,6 @@
+FROM postgres:15-alpine
+
+# Update gosu to a version built with secure Go standard library (Go 1.26.3+)
+RUN apk add --no-cache gosu \
+    && cp /usr/bin/gosu /usr/local/bin/gosu \
+    && apk del gosu
