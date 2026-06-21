@@ -34,6 +34,17 @@ graph TD;
 
 ## 🚀 Швидкий старт (Docker)
 
+### Запуск однією командою:
+```bash
+curl -sSL https://raw.githubusercontent.com/weby-homelab/safety-chat-bot/master/run.sh | bash
+```
+або через `wget`:
+```bash
+wget -qO- https://raw.githubusercontent.com/weby-homelab/safety-chat-bot/master/run.sh | bash
+```
+
+### Ручне встановлення:
+
 1. **Клонуйте репозиторій:**
    ```bash
    git clone https://github.com/weby-homelab/safety-chat-bot.git
@@ -48,7 +59,7 @@ graph TD;
 
 3. **Запустіть:**
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 ## 🛠 Технологічний стек
