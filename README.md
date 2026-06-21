@@ -1,4 +1,4 @@
-# 🛡️ Safety-chat-bot v0.3.0
+# 🛡️ Safety-chat-bot v0.4.0
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/weby-homelab/safety-chat-bot?style=flat-square&color=blue)](https://github.com/weby-homelab/safety-chat-bot/releases)
 [![Docker Pulls](https://img.shields.io/docker/pulls/webyhomelab/safety-chat-bot?style=flat-square&color=green)](https://hub.docker.com/r/webyhomelab/safety-chat-bot)
@@ -9,30 +9,26 @@
 
 ## ✨ Основні можливості
 
-- **🛡️ Автоматична Модерація:** Швидкі евристичні фільтри миттєво видаляють спам-посилання та фішинг (наприклад, `scam.site`).
-- **🔥 Нативна Карма (Репутація):** Система подяк без зайвого тексту. Карма нараховується виключно за Telegram-реакції (🔥, ❤️, 👍, 👏, 🏆, 💯, ⚡️).
-- **👥 Авто-реєстрація:** Бот автоматично створює профілі для нових учасників чату при їх першій активності.
-- **📊 Команда `/karma`:** Можливість миттєво перевірити свій рівень репутації в чаті.
+- **🛡️ Автоматична Модерація:** Швидкі евристичні фільтри миттєво видаляють спам-посилання, фішинг (наприклад, `scam.site`) та заборонені слова чи фрази.
+- **👥 Авто-реєстрація:** Бот автоматично реєструє профілі для нових учасників чату при їх першій активності.
+- **📢 Сповіщення Адміністратора:** Автоматичні сповіщення в окремий чат адміністратора про всі ключові події модерації (пройдена чи провалена капча, видалений спам, скарги користувачів через команду `/report`).
 - **⚙️ Надійна Архітектура:** Використання SQLAlchemy 2.0, Alembic для міграцій та Docker для швидкого розгортання.
 
 ## 🏗 Архітектура
 
 ```mermaid
 graph TD;
-    User[Користувач Telegram] -->|Повідомлення / Реакції| Bot[Safety-chat-bot]
+    User[Користувач Telegram] -->|Повідомлення| Bot[Safety-chat-bot]
     
     subgraph Telegram Bot
         Bot --> Middleware[DbSessionMiddleware]
-        Middleware --> Router1[Reactions Handler]
         Middleware --> Router2[Messages Handler]
     end
     
     subgraph Database Layer
-        Router1 --> DB[(PostgreSQL)]
-        Router2 --> DB
+        Router2 --> DB[(PostgreSQL)]
         DB --> Users[Users Table]
         DB --> Chats[Chats Table]
-        DB --> Karma[KarmaRecords Table]
     end
 ```
 
@@ -47,7 +43,7 @@ graph TD;
 2. **Налаштуйте `.env`:**
    ```bash
    cp .env.example .env
-   # Вкажіть ваш BOT_TOKEN та налаштування БД
+   # Вкажіть ваш BOT_TOKEN, DATABASE_URL, а також TELEGRAM_BOT_TOKEN_ADMIN та TELEGRAM_CHAT_ID_ADMIN для сповіщень
    ```
 
 3. **Запустіть:**
@@ -64,7 +60,7 @@ graph TD;
 - **Docker** & **Docker Compose**
 
 ## 📝 Важливе налаштування
-Для коректної роботи карми та антиспаму, вимкніть **Group Privacy** у @BotFather та надайте боту права адміністратора на видалення повідомлень.
+Для коректної роботи антиспаму, вимкніть **Group Privacy** у @BotFather та надайте боту права адміністратора на видалення повідомлень.
 
 ##
 

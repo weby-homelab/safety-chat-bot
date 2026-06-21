@@ -5,7 +5,6 @@ from aiogram import Bot, Dispatcher
 from bot.config import load_config
 from bot.database.engine import create_db_pool
 from bot.middlewares.db import DbSessionMiddleware
-from bot.handlers.reactions import router as reactions_router
 from bot.handlers.messages import router as messages_router
 from bot.services.moderation import load_dynamic_blacklists
 
@@ -43,11 +42,9 @@ async def main():
     # Реєстрація мідлварі для різних типів апдейтів
     middleware = DbSessionMiddleware(session_pool=session_pool)
     dp.message.middleware(middleware)
-    dp.message_reaction.middleware(middleware)
     dp.callback_query.middleware(middleware)
     
     # Handlers
-    dp.include_router(reactions_router)
     dp.include_router(messages_router)
     
     logger.info("Starting bot...")
