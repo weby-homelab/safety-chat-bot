@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from bot.services.moderation import check_fast_heuristics
 from bot.database.models import User, BannedDomain, BannedKeyword
 from bot.services.user_service import upsert_user, upsert_chat
+from bot.services.notifications import send_admin_notification
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -28,7 +29,7 @@ async def is_admin(message: Message) -> bool:
         logger.error(f"Error checking admin status: {e}")
         return False
 
-async def captcha_timeout_task(bot: Bot, chat_id: int, user_id: int, join_msg_id: int, captcha_msg_id: int):
+async def captcha_timeout_task(bot: Bot, chat_id: int, chat_title: str, user_id: int, full_name: str, username: str | None, join_msg_id: int, captcha_msg_id: int):
     try:
         await asyncio.sleep(180)  # 3 minutes
         logger.info(f"User {user_id} failed captcha in chat {chat_id}. Kicking...")
@@ -51,6 +52,11 @@ async def captcha_timeout_task(bot: Bot, chat_id: int, user_id: int, join_msg_id
         except Exception as e:
             logger.debug(f"Failed to delete join message: {e}")
             
+        # Send admin notification
+        username_str = f" (@{username})" if username else ""
+        await send_admin_notification(
+            f"❌ Користувач <b>{full_name}</b>{username_str} (ID: {user_id}) не пройшов перевірку капчею в чаті <code>{chat_title}</code> та був вилучений."
+        )
     except asyncio.CancelledError:
         pass
     finally:
@@ -99,8 +105,9 @@ async def handle_new_member(message: Message):
         )
         
         # 3. Schedule timeout
+        chat_title = message.chat.title if message.chat.title else f"Chat {chat_id}"
         task = asyncio.create_task(
-            captcha_timeout_task(bot, chat_id, user_id, message.message_id, captcha_msg.message_id)
+            captcha_timeout_task(bot, chat_id, chat_title, user_id, member.full_name, member.username, message.message_id, captcha_msg.message_id)
         )
         captcha_tasks[(chat_id, user_id)] = (captcha_msg.message_id, task)
 
@@ -122,6 +129,7 @@ async def on_captcha_solve(callback: CallbackQuery):
         task.cancel()
         
     # Unmute user
+    unmuted_ok = False
     try:
         await bot.restrict_chat_member(
             chat_id=chat_id,
@@ -135,6 +143,7 @@ async def on_captcha_solve(callback: CallbackQuery):
             )
         )
         logger.info(f"Unmuted user {clicker_id} in chat {chat_id}")
+        unmuted_ok = True
     except Exception as e:
         logger.error(f"Failed to unmute user {clicker_id}: {e}")
         
@@ -145,25 +154,18 @@ async def on_captcha_solve(callback: CallbackQuery):
         logger.debug(f"Failed to delete captcha message: {e}")
         
     await callback.answer("Дякую! Перевірку пройдено, приємного спілкування. 👍", show_alert=True)
+    
+    # Send admin notification
+    if unmuted_ok:
+        chat_title = callback.message.chat.title if callback.message.chat.title else f"Chat {chat_id}"
+        username_str = f" (@{callback.from_user.username})" if callback.from_user.username else ""
+        await send_admin_notification(
+            f"✅ Користувач <b>{callback.from_user.full_name}</b>{username_str} (ID: {clicker_id}) успішно пройшов перевірку капчею в чаті <code>{chat_title}</code>."
+        )
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.reply("Привіт! Я Safety AI Bot. Я допомагаю з модерацією та кармою. Спробуй /karma")
-
-@router.message(Command("karma"))
-async def cmd_karma(message: Message, session: AsyncSession):
-    logger.info(f"Command /karma from user {message.from_user.id}")
-    user_id = message.from_user.id
-    
-    await upsert_user(session, user_id, message.from_user.full_name, message.from_user.username)
-    
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    
-    if user:
-        await message.reply(f"Твоя карма: {user.total_karma} 🔥")
-    else:
-        await message.reply("Помилка отримання даних. Спробуй пізніше.")
+    await message.reply("Привіт! Я Safety AI Bot. Я допомагаю з модерацією чату.")
 
 @router.message(Command("ban_domain"))
 async def cmd_ban_domain(message: Message, session: AsyncSession):
@@ -263,6 +265,7 @@ async def cmd_report(message: Message, session: AsyncSession):
         
     reporter_id = message.from_user.id
     target_msg = message.reply_to_message
+    chat_title = message.chat.title if message.chat.title else f"Chat {message.chat.id}"
     
     is_reporter_admin = await is_admin(message)
     if is_reporter_admin:
@@ -270,22 +273,26 @@ async def cmd_report(message: Message, session: AsyncSession):
             await target_msg.delete()
             await message.delete()
             logger.info(f"Admin {reporter_id} reported message {target_msg.message_id}. Deleted.")
+            
+            reporter_username = f" (@{message.from_user.username})" if message.from_user.username else ""
+            author_name = target_msg.from_user.full_name if target_msg.from_user else "Unknown"
+            author_username = f" (@{target_msg.from_user.username})" if target_msg.from_user and target_msg.from_user.username else ""
+            await send_admin_notification(
+                f"🛡️ Адміністратор <b>{message.from_user.full_name}</b>{reporter_username} видалив повідомлення від <b>{author_name}</b>{author_username} у чаті <code>{chat_title}</code> через /report."
+            )
             return
         except Exception as e:
             logger.error(f"Failed to delete reported message: {e}")
             
-    result = await session.execute(select(User).where(User.id == reporter_id))
-    user = result.scalar_one_or_none()
+    reporter_username = f" (@{message.from_user.username})" if message.from_user.username else ""
+    author_name = target_msg.from_user.full_name if target_msg.from_user else "Unknown"
+    author_username = f" (@{target_msg.from_user.username})" if target_msg.from_user and target_msg.from_user.username else ""
+    target_text = target_msg.text or target_msg.caption or "[медіа/інше]"
     
-    # If reporter is trusted (karma >= 5)
-    if user and user.total_karma >= 5:
-        try:
-            await target_msg.delete()
-            await message.delete()
-            logger.info(f"Trusted user {reporter_id} (karma {user.total_karma}) reported message {target_msg.message_id}. Deleted.")
-            return
-        except Exception as e:
-            logger.error(f"Failed to delete reported message: {e}")
+    await send_admin_notification(
+        f"⚠️ Скарга від <b>{message.from_user.full_name}</b>{reporter_username} на повідомлення від <b>{author_name}</b>{author_username} у чаті <code>{chat_title}</code>.\n"
+        f"Вміст повідомлення:\n<code>{target_text[:300]}</code>"
+    )
             
     await message.reply("Вашу скаргу надіслано. Дякуємо за пильність! 🛡️")
 
@@ -307,8 +314,18 @@ async def process_text_message(message: Message, session: AsyncSession):
     
     if check_fast_heuristics(text_to_check):
         logger.info(f"Spam detected from {message.from_user.id}, deleting...")
+        deleted_ok = False
         try:
             await message.delete()
+            deleted_ok = True
         except Exception as e:
             logger.error(f"Failed to delete message: {e}")
+            
+        if deleted_ok:
+            chat_title = message.chat.title if message.chat.title else f"Chat {message.chat.id}"
+            username_str = f" (@{message.from_user.username})" if message.from_user.username else ""
+            await send_admin_notification(
+                f"🚫 Видалено спам від <b>{message.from_user.full_name}</b>{username_str} (ID: {message.from_user.id}) у чаті <code>{chat_title}</code>.\n"
+                f"Текст:\n<code>{text_to_check[:300]}</code>"
+            )
         return
