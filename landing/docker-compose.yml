@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  safety-chat-bot-landing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: safety-chat-bot-landing
+    restart: unless-stopped
+    ports:
+      - "3032:80"
+    environment:
+      - TZ=Europe/Kyiv
