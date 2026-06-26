@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <!-- SEO & Metadata -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safety-Chat-Bot — Розумний Захист Telegram Спільнот від Спаму та ІПСО</title>
+    <meta name="description" content="Сучасний, легкий та повністю безкоштовний Telegram-бот для модерації та управління спільнотами. Захистіть свої чати від спаму, фішингу, омогліфів та ворожих ІПСО за допомогою розумних евристичних фільтрів.">
+    <meta name="keywords" content="telegram bot, moderation, spam filter, anti-spam telegram, safety-chat-bot, weby homelab, aiogram 3, ipso, captcha, ukraine">
+    <meta name="author" content="Weby Homelab">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph (Telegram, Facebook, LinkedIn) -->
+    <meta property="og:title" content="Safety-Chat-Bot — Розумна модерація Telegram-чатів">
+    <meta property="og:description" content="Захистіть свої Telegram-спільноти від спаму, ботів та ворожих пропагандистських ІПСО. Евристичні фільтри, блокування омогліфів та сповіщення для адміністраторів.">
+    <meta property="og:url" content="https://safety-chat-bot.weby.guru/">
+    <meta property="og:image" content="https://safety-chat-bot.weby.guru/assets/og-image.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Safety-Chat-Bot">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Safety-Chat-Bot — Розумна модерація Telegram-чатів">
+    <meta name="twitter:description" content="Сучасний Telegram-бот для модерації та захисту від спаму, фішингових лінків та ІПСО. Побудований на базі Aiogram 3 та PostgreSQL.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Modern Design System & CSS Custom Properties */
+        :root {
+            --bg-dark: #08090d;
+            --bg-panel: rgba(255, 255, 255, 0.03);
+            --border-glow: rgba(255, 255, 255, 0.05);
+            --cyan-glow: #00f0ff;
+            --purple-glow: #bd00ff;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --text-dark: #4b5563;
+            --cyan-light: rgba(0, 240, 255, 0.15);
+            --purple-light: rgba(189, 0, 255, 0.15);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Basic Resets & Layout */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+        }
+
+        /* Glow Background Overlays */
+        .ambient-glows {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .glow-cyan {
+            position: absolute;
+            top: -10%;
+            left: 20%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--cyan-light) 0%, transparent 70%);
+            filter: blur(80px);
+            animation: pulse-glow 10s infinite alternate;
+        }
+
+        .glow-purple {
+            position: absolute;
+            top: 20%;
+            right: 10%;
+            width: 700px;
+            height: 700px;
+            background: radial-gradient(circle, var(--purple-light) 0%, transparent 70%);
+            filter: blur(100px);
+            animation: pulse-glow 12s infinite alternate-reverse;
+        }
+
+        @keyframes pulse-glow {
+            0% { transform: scale(1) translate(0, 0); }
+            100% { transform: scale(1.15) translate(30px, -30px); }
+        }
+
+        /* Container & Navigation */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(8, 9, 13, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-glow);
+            z-index: 100;
+            transition: var(--transition);
+        }
+
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 80px;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .logo-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--cyan-glow), var(--purple-glow));
+            border-radius: 10px;
+            color: var(--bg-dark);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+        }
+
+        .logo-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .nav-links a:hover {
+            color: var(--text-main);
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .btn-lang {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glow);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-lang:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--cyan-glow);
+        }
+
+        .btn-github {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--text-main);
+            color: var(--bg-dark);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 10px 18px;
+            border-radius: 8px;
+            transition: var(--transition);
+        }
+
+        .btn-github:hover {
+            background: #ffffff;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* Hero Section */
+        .hero {
+            position: relative;
+            padding: 180px 0 80px 0;
+            display: grid;
+            grid-template-cols: 1.1fr 0.9fr;
+            gap: 48px;
+            align-items: center;
+        }
+
+        .hero-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 240, 255, 0.08);
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            color: var(--cyan-glow);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            margin-bottom: 24px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            line-height: 1.15;
+            margin-bottom: 20px;
+            letter-spacing: -1.5px;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ffffff 30%, var(--cyan-glow) 70%, var(--purple-glow) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-desc {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            margin-bottom: 36px;
+            max-width: 540px;
+        }
+
+        .hero-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, var(--cyan-glow), var(--purple-glow));
+            color: var(--bg-dark);
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 700;
+            padding: 16px 32px;
+            border-radius: 12px;
+            text-decoration: none;
+            box-shadow: 0 0 25px rgba(0, 240, 255, 0.35);
+            transition: var(--transition);
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 35px rgba(0, 240, 255, 0.5), 0 0 15px rgba(189, 0, 255, 0.3);
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-glow);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 16px 28px;
+            border-radius: 12px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--text-muted);
+            transform: translateY(-2px);
+        }
+
+        /* Animated Terminal Widget */
+        .terminal-wrapper {
+            background: rgba(12, 13, 20, 0.7);
+            border: 1px solid var(--border-glow);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .terminal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border-glow);
+        }
+
+        .terminal-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .term-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .term-red { background-color: #ff5f56; }
+        .term-yellow { background-color: #ffbd2e; }
+        .term-green { background-color: #27c93f; }
+
+        .terminal-title {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .terminal-body {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            padding: 20px;
+            height: 320px;
+            overflow-y: auto;
+            color: #d1d5db;
+        }
+
+        .term-line {
+            margin-bottom: 10px;
+            opacity: 0;
+            transform: translateY(5px);
+            animation: show-line 0.4s forwards;
+        }
+
+        @keyframes show-line {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .t-cyan { color: var(--cyan-glow); }
+        .t-purple { color: #d946ef; }
+        .t-gray { color: var(--text-muted); }
+        .t-yellow { color: #f59e0b; }
+        .t-red { color: #ef4444; }
+        .t-green { color: #10b981; }
+
+        /* Bento Grid Section */
+        .section-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-subtitle {
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--cyan-glow);
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            letter-spacing: -1px;
+        }
+
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-bottom: 80px;
+        }
+
+        .bento-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-glow);
+            border-radius: 24px;
+            padding: 32px;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+
+        .bento-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, transparent 80%, rgba(0, 240, 255, 0.03) 100%);
+            pointer-events: none;
+            transition: var(--transition);
+        }
+
+        .bento-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(0, 240, 255, 0.2);
+            box-shadow: 0 10px 30px rgba(0, 240, 255, 0.05);
+        }
+
+        .bento-card:hover::before {
+            opacity: 0.8;
+        }
+
+        /* Card Sizes */
+        .bento-card.col-2 {
+            grid-column: span 2;
+        }
+
+        .card-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glow);
+            border-radius: 12px;
+            color: var(--cyan-glow);
+            margin-bottom: 24px;
+            transition: var(--transition);
+        }
+
+        .bento-card:hover .card-icon {
+            color: var(--bg-dark);
+            background: var(--cyan-glow);
+            box-shadow: 0 0 15px var(--cyan-glow);
+            border-color: transparent;
+        }
+
+        .bento-card.purple-theme:hover .card-icon {
+            color: var(--text-main);
+            background: var(--purple-glow);
+            box-shadow: 0 0 15px var(--purple-glow);
+        }
+
+        .card-title {
+            font-size: 1.4rem;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .card-desc {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            line-height: 1.55;
+        }
+
+        /* Custom Bento Graphics */
+        .card-graphic {
+            margin-top: 24px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-glow);
+            padding: 16px;
+        }
+
+        /* Integration & Docker Section */
+        .integration {
+            background: radial-gradient(100% 100% at 50% 0%, rgba(189,0,255,0.02) 0%, transparent 100%);
+            padding: 80px 0;
+            border-top: 1px solid var(--border-glow);
+        }
+
+        .integration-grid {
+            display: grid;
+            grid-template-cols: 1fr 1fr;
+            gap: 64px;
+            align-items: flex-start;
+        }
+
+        .steps-list {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .step-item {
+            display: flex;
+            gap: 20px;
+        }
+
+        .step-num {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            background: rgba(0, 240, 255, 0.05);
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            color: var(--cyan-glow);
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 1.15rem;
+            border-radius: 12px;
+            flex-shrink: 0;
+        }
+
+        .step-content h4 {
+            font-size: 1.15rem;
+            margin-bottom: 8px;
+        }
+
+        .step-content p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        /* Interactive Code Block */
+        .docker-config {
+            background: rgba(12, 13, 20, 0.6);
+            border: 1px solid var(--border-glow);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+        }
+
+        .docker-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            background: rgba(255, 255, 255, 0.01);
+            border-bottom: 1px solid var(--border-glow);
+        }
+
+        .docker-tabs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .tab-btn.active {
+            color: var(--cyan-glow);
+            background: rgba(0, 240, 255, 0.06);
+        }
+
+        .btn-copy {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .btn-copy:hover {
+            color: var(--text-main);
+        }
+
+        .docker-body {
+            padding: 20px;
+            overflow-x: auto;
+            margin: 0;
+        }
+
+        .docker-body pre {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: #d1d5db;
+            margin: 0;
+        }
+
+        /* Tech Badges Section */
+        .tech-showcase {
+            padding: 60px 0;
+            text-align: center;
+            border-top: 1px solid var(--border-glow);
+        }
+
+        .tech-logos {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 32px;
+            margin-top: 36px;
+        }
+
+        .tech-badge {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-glow);
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+
+        .tech-badge:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            color: var(--text-main);
+            transform: translateY(-2px);
+        }
+
+        /* Footer */
+        footer {
+            background: #040508;
+            border-top: 1px solid var(--border-glow);
+            padding: 40px 0;
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .footer-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .ukraine-badge {
+            font-size: 0.85rem;
+            color: #d1d5db;
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 992px) {
+            .hero {
+                grid-template-cols: 1fr;
+                text-align: center;
+                padding-top: 140px;
+                gap: 40px;
+            }
+
+            .hero-badge, .hero-info {
+                align-self: center;
+                align-items: center;
+            }
+
+            .hero-title {
+                font-size: 2.75rem;
+            }
+
+            .bento-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .bento-card.col-2 {
+                grid-column: span 1;
+            }
+
+            .integration-grid {
+                grid-template-cols: 1fr;
+                gap: 40px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+        }
+
+        /* Multi-language displays */
+        .lang-en { display: none; }
+        .lang-uk { display: block; }
+
+        body.en-mode .lang-en { display: block; }
+        body.en-mode .lang-uk { display: none; }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #10b981;
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Ambient Neon Gradients -->
+    <div class="ambient-glows">
+        <div class="glow-cyan"></div>
+        <div class="glow-purple"></div>
+    </div>
+
+    <!-- Toast Banner -->
+    <div id="toast" class="toast">
+        <span class="lang-uk">Скопійовано!</span>
+        <span class="lang-en">Copied!</span>
+    </div>
+
+    <!-- Navigation Header -->
+    <header>
+        <div class="container">
+            <nav class="navbar">
+                <a href="#" class="logo-area">
+                    <div class="logo-icon">
+                        <i data-lucide="shield-alert"></i>
+                    </div>
+                    <span class="logo-text">Safety-Chat-Bot</span>
+                </a>
+                
+                <ul class="nav-links">
+                    <li><a href="#features"><span class="lang-uk">Можливості</span><span class="lang-en">Features</span></a></li>
+                    <li><a href="#setup"><span class="lang-uk">Встановлення</span><span class="lang-en">Setup</span></a></li>
+                    <li><a href="#docker"><span class="lang-uk">Docker</span><span class="lang-en">Docker</span></a></li>
+                </ul>
+
+                <div class="nav-actions">
+                    <button class="btn-lang" onclick="toggleLanguage()" id="lang-toggle-btn">EN</button>
+                    <a href="https://github.com/weby-homelab/safety-chat-bot" target="_blank" class="btn-github">
+                        <i data-lucide="github" style="width: 18px; height: 18px;"></i>
+                        <span>GitHub</span>
+                    </a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="hero-info">
+                <div class="hero-badge">
+                    <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+                    <span>v0.5.0 Release (June 2026)</span>
+                </div>
+                <h1 class="hero-title">
+                    <span class="lang-uk">Сучасний захист вашого чату в <span class="gradient-text">Telegram</span></span>
+                    <span class="lang-en">Modern security for your <span class="gradient-text">Telegram</span> community</span>
+                </h1>
+                <p class="hero-desc">
+                    <span class="lang-uk">Повністю безкоштовний open-source бот для модерації. Захищає від спам-атак, фішингу, шахрайства та ворожих ІПСО за допомогою сучасних евристик та нормалізації символів.</span>
+                    <span class="lang-en">A fully free open-source moderation bot. Protects against spam raids, phishing links, fraud, and hostile propaganda using advanced heuristics and character normalization.</span>
+                </p>
+                <div class="hero-buttons">
+                    <a href="https://t.me/SafetyChatModeratorBot" target="_blank" class="btn-primary">
+                        <i data-lucide="send"></i>
+                        <span class="lang-uk">Додати в Telegram</span>
+                        <span class="lang-en">Add to Telegram</span>
+                    </a>
+                    <button class="btn-secondary" onclick="copyInstallScript()">
+                        <i data-lucide="terminal"></i>
+                        <span class="lang-uk">Docker запуск</span>
+                        <span class="lang-en">Docker run</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Terminal Simulator Widget -->
+            <div class="terminal-wrapper">
+                <div class="terminal-header">
+                    <div class="terminal-buttons">
+                        <div class="term-dot term-red"></div>
+                        <div class="term-dot term-yellow"></div>
+                        <div class="term-dot term-green"></div>
+                    </div>
+                    <div class="terminal-title">safetybot_moderator.log</div>
+                    <div style="width: 52px;"></div>
+                </div>
+                <div class="terminal-body" id="terminal-screen">
+                    <!-- Lines will be dynamically generated by Javascript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Bento Grid Features Section -->
+        <section id="features" style="padding: 80px 0 40px 0;">
+            <div class="section-header">
+                <div class="section-subtitle">
+                    <span class="lang-uk">Бездоганні модулі</span>
+                    <span class="lang-en">Flawless modules</span>
+                </div>
+                <h2 class="section-title">
+                    <span class="lang-uk">Створений для безпеки чату</span>
+                    <span class="lang-en">Built for community safety</span>
+                </h2>
+            </div>
+
+            <div class="bento-grid">
+                <!-- Heuristic Engine Card -->
+                <div class="bento-card col-2">
+                    <div class="card-icon"><i data-lucide="cpu"></i></div>
+                    <h3 class="card-title">
+                        <span class="lang-uk">Інтелектуальна нормалізація тексту</span>
+                        <span class="lang-en">Intelligent Text Normalization</span>
+                    </h3>
+                    <p class="card-desc">
+                        <span class="lang-uk">Усуває спроби спамерів сховати ключові слова. Бот розпізнає та блокує повідомлення, де кириличні літери замінено візуально схожими латинськими омогліфами (наприклад, англійська `o`, `a` замість українських), а також ігнорує шуми (пробіли, зірочки чи знаки підкреслення).</span>
+                        <span class="lang-en">Neutralizes attempts by spammers to bypass filters. The bot analyzes and blocks messages where Cyrillic letters are replaced by visually identical Latin homoglyphs (e.g. English `o`, `a` instead of Ukrainian), and strips out noise characters (spaces, stars, underlines).</span>
+                    </p>
+                </div>
+
+                <!-- Banned Domains & Anti-phishing Card -->
+                <div class="bento-card">
+                    <div class="card-icon"><i data-lucide="globe"></i></div>
+                    <h3 class="card-title">
+                        <span class="lang-uk">Антифішинговий щит</span>
+                        <span class="lang-en">Anti-phishing shield</span>
+                    </h3>
+                    <p class="card-desc">
+                        <span class="lang-uk">Автоматичне блокування та видалення шкідливих посилань із використанням списку заборонених доменів (`BANNED_DOMAINS`) та сервісів скорочення лінків (таких як `is.gd`, `t.co`, `bit.do`).</span>
+                        <span class="lang-en">Automatic blocking and removal of malicious links using lists of banned domains (`BANNED_DOMAINS`) and tracking/url shortening services (like `is.gd`, `t.co`, `bit.do`).</span>
+                    </p>
+                </div>
+
+                <!-- Admin Notification Center Card -->
+                <div class="bento-card">
+                    <div class="card-icon"><i data-lucide="bell"></i></div>
+                    <h3 class="card-title">
+                        <span class="lang-uk">Сповіщення адміна</span>
+                        <span class="lang-en">Admin Notification Hub</span>
+                    </h3>
+                    <p class="card-desc">
+                        <span class="lang-uk">Миттєве інформування в окремий чат адміністратора про будь-які критичні дії (видалений спам, спроби зламу, скарги користувачів через команду `/report`).</span>
+                        <span class="lang-en">Instant alerts delivered directly to a dedicated admin chat about critical actions (deleted spam messages, user complaints via `/report`, captcha completions).</span>
+                    </p>
+                </div>
+
+                <!-- Auto-registration & Architecture Card -->
+                <div class="bento-card col-2 purple-theme">
+                    <div class="card-icon"><i data-lucide="database"></i></div>
+                    <h3 class="card-title">
+                        <span class="lang-uk">Авто-реєстрація та SQLAlchemy 2.0</span>
+                        <span class="lang-en">Silent Auto-Registration</span>
+                    </h3>
+                    <p class="card-desc">
+                        <span class="lang-uk">Бот непомітно створює та оновлює профілі нових учасників під час їхньої першої активності. Архітектура SQLAlchemy 2.0 та міграції Alembic гарантують швидкість запитів до PostgreSQL, а розумне сідування Default-словника запобігає затиранню адмінських налаштувань.</span>
+                        <span class="lang-en">Silently registers and updates chat participant profiles upon their first message. Powered by SQLAlchemy 2.0 and Alembic migrations for blazing-fast query execution against PostgreSQL, preventing loss of custom admin overrides.</span>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Integration / Docker Setup Section -->
+        <section id="setup" class="integration">
+            <div class="section-header">
+                <div class="section-subtitle">
+                    <span class="lang-uk">Швидкий старт</span>
+                    <span class="lang-en">Quick integration</span>
+                </div>
+                <h2 class="section-title">
+                    <span class="lang-uk">Як розпочати роботу?</span>
+                    <span class="lang-en">How to get started?</span>
+                </h2>
+            </div>
+
+            <div class="integration-grid">
+                <!-- Steps Area -->
+                <div class="steps-list">
+                    <div class="step-item">
+                        <div class="step-num">1</div>
+                        <div class="step-content">
+                            <h4>
+                                <span class="lang-uk">Додайте бота до чату</span>
+                                <span class="lang-en">Add Bot to Chat</span>
+                            </h4>
+                            <p>
+                                <span class="lang-uk">Знайдіть нашого бота за посиланням або ім'ям `@SafetyChatModeratorBot` та додайте його як учасника вашої групи.</span>
+                                <span class="lang-en">Search for our bot at `@SafetyChatModeratorBot` and add it to your Telegram group chat.</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-num">2</div>
+                        <div class="step-content">
+                            <h4>
+                                <span class="lang-uk">Надайте права адміністратора</span>
+                                <span class="lang-en">Grant Admin Rights</span>
+                            </h4>
+                            <p>
+                                <span class="lang-uk">Для можливості видаляти спам та блокувати порушників, надайте боту права на видалення повідомлень та блокування учасників.</span>
+                                <span class="lang-en">Grant the bot permissions to delete messages and ban users so it can successfully moderate the community.</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-num">3</div>
+                        <div class="step-content">
+                            <h4>
+                                <span class="lang-uk">Вимкніть Group Privacy</span>
+                                <span class="lang-en">Disable Group Privacy</span>
+                            </h4>
+                            <p>
+                                <span class="lang-uk">Зверніться до `@BotFather`, оберіть вашого бота, перейдіть до `Bot Settings` -> `Group Privacy` та переведіть її в статус `Disabled`. Це дозволить боту сканувати повідомлення на спам.</span>
+                                <span class="lang-en">Talk to `@BotFather`, select your bot, go to `Bot Settings` -> `Group Privacy` and select `Disabled`. This enables the bot to monitor all incoming chat messages.</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Config Widget -->
+                <div class="docker-config" id="docker">
+                    <div class="docker-header">
+                        <div class="docker-tabs">
+                            <button class="tab-btn active" onclick="switchTab('compose')">docker-compose.yml</button>
+                            <button class="tab-btn" onclick="switchTab('env')">.env</button>
+                        </div>
+                        <button class="btn-copy" onclick="copyConfigCode()">
+                            <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                            <span class="lang-uk">Копіювати</span>
+                            <span class="lang-en">Copy</span>
+                        </button>
+                    </div>
+                    <pre class="docker-body"><code id="code-snippet"></code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tech Badges Section -->
+        <section class="tech-showcase">
+            <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--text-muted);">
+                <span class="lang-uk">Технологічний стек проекту</span>
+                <span class="lang-en">Built on modern tools</span>
+            </h3>
+            <div class="tech-logos">
+                <div class="tech-badge"><i data-lucide="terminal"></i> Python 3.11+</div>
+                <div class="tech-badge"><i data-lucide="zap"></i> Aiogram 3.x</div>
+                <div class="tech-badge"><i data-lucide="database"></i> PostgreSQL</div>
+                <div class="tech-badge"><i data-lucide="container"></i> Docker</div>
+                <div class="tech-badge"><i data-lucide="git-branch"></i> SQLAlchemy 2.0</div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container footer-content">
+            <p>© 2026 Weby Homelab. Licensed under MIT / GPLv3.</p>
+            <div class="ukraine-badge">
+                Made in Ukraine under air raid sirens & blackouts ⚡ 🇺🇦
+            </div>
+        </div>
+    </footer>
+
+    <!-- Interactive Scripts -->
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Language toggle logic
+        let currentLang = 'uk';
+        function toggleLanguage() {
+            const body = document.body;
+            const btn = document.getElementById('lang-toggle-btn');
+            if (currentLang === 'uk') {
+                body.classList.add('en-mode');
+                btn.innerText = 'UA';
+                currentLang = 'en';
+            } else {
+                body.classList.remove('en-mode');
+                btn.innerText = 'EN';
+                currentLang = 'uk';
+            }
+            updateTerminalLanguage();
+        }
+
+        // Copy actions
+        function showToast(msgUk, msgEn) {
+            const toast = document.getElementById('toast');
+            toast.innerText = currentLang === 'uk' ? msgUk : msgEn;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        function copyInstallScript() {
+            const cmd = "curl -sSL https://raw.githubusercontent.com/weby-homelab/safety-chat-bot/master/run.sh | bash";
+            navigator.clipboard.writeText(cmd).then(() => {
+                showToast("Команду скопійовано!", "Command copied!");
+            });
+        }
+
+        // Code snippets tabs
+        const snippets = {
+            compose: `version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: safetybot_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: safetybot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  bot:
+    image: webyhomelab/safety-chat-bot:latest
+    container_name: safetybot_app
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      - TZ=Europe/Kyiv
+      - BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/safetybot
+      - TELEGRAM_BOT_TOKEN_ADMIN=YOUR_ADMIN_BOT_TOKEN
+      - TELEGRAM_CHAT_ID_ADMIN=YOUR_ADMIN_CHAT_ID
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  pgdata:`,
+            env: `# Bot credentials
+BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/safetybot
+
+# Admin alerts channel (optional)
+TELEGRAM_BOT_TOKEN_ADMIN=YOUR_ADMIN_BOT_TOKEN
+TELEGRAM_CHAT_ID_ADMIN=YOUR_ADMIN_CHAT_ID`
+        };
+
+        let currentTab = 'compose';
+        const codeElement = document.getElementById('code-snippet');
+        
+        function updateCodeBlock() {
+            codeElement.textContent = snippets[currentTab];
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            const buttons = document.querySelectorAll('.docker-tabs .tab-btn');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(tab)) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            updateCodeBlock();
+        }
+
+        function copyConfigCode() {
+            navigator.clipboard.writeText(snippets[currentTab]).then(() => {
+                showToast("Конфіг скопійовано!", "Config copied!");
+            });
+        }
+
+        // Initialize code block
+        updateCodeBlock();
+
+        // Terminal simulation logic
+        const termLinesUk = [
+            { text: "[INFO] Ініціалізація Safety-Chat-Bot...", class: "t-gray" },
+            { text: "[INFO] Завантаження списку BANNED_DOMAINS (512 записів)", class: "t-gray" },
+            { text: "[INFO] Підключення до БД PostgreSQL... Успішно.", class: "t-green" },
+            { text: "[STATUS] Бот активний та моніторить групу.", class: "t-green" },
+            { text: ">>> Отримано нове повідомлення від @user134:", class: "t-cyan" },
+            { text: "   \"Привіт! Пропоную роботу вдома, 500$ в день. Пишіть в приват.\"", class: "t-gray" },
+            { text: "[WARN] Збіг за спам-шаблоном: \"робота вдома\"", class: "t-yellow" },
+            { text: "[ACTION] Повідомлення від @user134 видалено.", class: "t-red" },
+            { text: "[ADMIN] Надіслано сповіщення в адмін-чат.", class: "t-purple" },
+            { text: ">>> Отримано нове повідомлення від @cryptoguy:", class: "t-cyan" },
+            { text: "   \"К_Р_И_П_Т_A і біткоін! Реєстрація: is.gd/ref\"", class: "t-gray" },
+            { text: "[NORMALIZER] Текст нормалізовано: \"крипта і біткоін! реєстрація: is.gd/ref\"", class: "t-yellow" },
+            { text: "[WARN] Збіг за забороненим доменом: \"is.gd\"", class: "t-yellow" },
+            { text: "[ACTION] Повідомлення видалено. Користувача @cryptoguy заблоковано.", class: "t-red" },
+            { text: "[ADMIN] Надіслано звіт про блокування.", class: "t-purple" },
+            { text: ">>> Отримано нове повідомлення від @oksana_petrova:", class: "t-cyan" },
+            { text: "   \"Дівчата, чи отримав хтось виплати ООН? Кажуть дають 5000 грн\"", class: "t-gray" },
+            { text: "[WARN] Виявлено шахрайську схему: \"виплати оон\"", class: "t-yellow" },
+            { text: "[ACTION] Шахрайське повідомлення видалено.", class: "t-red" }
+        ];
+
+        const termLinesEn = [
+            { text: "[INFO] Initializing Safety-Chat-Bot...", class: "t-gray" },
+            { text: "[INFO] Loaded 512 entries from BANNED_DOMAINS", class: "t-gray" },
+            { text: "[INFO] Connecting to PostgreSQL database... Success.", class: "t-green" },
+            { text: "[STATUS] Bot is active and listening to group events.", class: "t-green" },
+            { text: ">>> Incoming message from @user134:", class: "t-cyan" },
+            { text: "   \"Hello! Offering work from home, 500$/day. PM me.\"", class: "t-gray" },
+            { text: "[WARN] Spam phrase match: \"work from home\"", class: "t-yellow" },
+            { text: "[ACTION] Deleted message from @user134.", class: "t-red" },
+            { text: "[ADMIN] Alert dispatched to admin log channel.", class: "t-purple" },
+            { text: ">>> Incoming message from @cryptoguy:", class: "t-cyan" },
+            { text: "   \"C*R*Y*P*T*O signals! Link: is.gd/ref\"", class: "t-gray" },
+            { text: "[NORMALIZER] Normalized text: \"crypto signals! link: is.gd/ref\"", class: "t-yellow" },
+            { text: "[WARN] Banned domain match: \"is.gd\"", class: "t-yellow" },
+            { text: "[ACTION] Message deleted. User @cryptoguy has been banned.", class: "t-red" },
+            { text: "[ADMIN] Incident details logged to admin chat.", class: "t-purple" },
+            { text: ">>> Incoming message from @oksana_petrova:", class: "t-cyan" },
+            { text: "   \"Did anyone get UN financial help? They say they give 5000 UAH\"", class: "t-gray" },
+            { text: "[WARN] Scam pattern match: \"un financial help\"", class: "t-yellow" },
+            { text: "[ACTION] Scam message deleted.", class: "t-red" }
+        ];
+
+        let lineIdx = 0;
+        const termScreen = document.getElementById('terminal-screen');
+
+        function addTerminalLine() {
+            const currentLines = currentLang === 'uk' ? termLinesUk : termLinesEn;
+            if (lineIdx >= currentLines.length) {
+                termScreen.innerHTML = '';
+                lineIdx = 0;
+            }
+            const line = currentLines[lineIdx];
+            const div = document.createElement('div');
+            div.className = `term-line ${line.class}`;
+            div.innerHTML = line.text;
+            termScreen.appendChild(div);
+            termScreen.scrollTop = termScreen.scrollHeight;
+            lineIdx++;
+            
+            // Random delay between lines to look natural (800ms - 2500ms)
+            const delay = line.text.startsWith('>>>') ? 2200 : (line.text.startsWith('   ') ? 1500 : 900);
+            setTimeout(addTerminalLine, delay);
+        }
+
+        function updateTerminalLanguage() {
+            termScreen.innerHTML = '';
+            lineIdx = 0;
+        }
+
+        // Start terminal simulation
+        setTimeout(addTerminalLine, 1000);
+    </script>
+</body>
+</html>
