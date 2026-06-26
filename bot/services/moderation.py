@@ -9,13 +9,15 @@ logger = logging.getLogger(__name__)
 # Розширений список заборонених доменів (за замовчуванням)
 BANNED_DOMAINS = {
     "scam.site", "free-crypto.io", "bit.ly", "tinyurl.com", 
-    "t.me/crypto", "t.me/joinchat", "cutt.ly", "rb.gy"
+    "t.me/crypto", "t.me/joinchat", "cutt.ly", "rb.gy",
+    "is.gd", "t.co", "bit.do", "vk.cc", "rebrand.ly", "scam.link",
+    "free-money.club", "cryptogive.io"
 }
 
-# Ключові слова для фільтрації спаму (за замовчуванням)
+# Ключові слова для фільтрації спаму та російської агресії/ботів (за замовчуванням)
 SPAM_KEYWORDS = [
+    # 1. Spams & Scams (Ukrainian & Russian)
     r"виграш", r"выигрыш",
-    r"крипта", r"криптовалюта",
     r"безкоштовно", r"бесплатно",
     r"заробіток", r"заработок",
     r"дохід", r"доход",
@@ -25,6 +27,37 @@ SPAM_KEYWORDS = [
     r"швидкі гроші", r"быстрые деньги",
     r"акція", r"акция",
     r"продам", r"куплю",
+    r"підробіток", r"подработка",
+    r"вакансія", r"вакансия",
+    r"переходи по посиланню", r"переходи по ссылке",
+    r"слив схем", r"схемы заработка",
+    r"казино", r"ставки", r"1xbet",
+    r"пишите в лс", r"пишіть в лс",
+    r"написать менеджеру", r"написати менеджеру",
+    r"в день від", r"в день от",
+    r"робота в інтернеті", r"работа в интернете",
+    r"іщу співробітників", r"ищу сотрудников",
+
+    # 2. Fake social payouts & charity scams (very high priority in UA chats)
+    r"виплати від", r"виплати українцям", r"выплаты украинцам",
+    r"грошова допомога", r"соцдопомога", r"соцвиплати", r"соцвыплаты",
+    r"єпідтримка", r"еподдержка",
+    r"компенсація від", r"компенсация от",
+    r"допомога від оон", r"выплаты от оон",
+    r"червоний хрест", r"красный крест",
+    r"заявка на виплату", r"заявка на выплату",
+    r"отримати виплату", r"получить выплату",
+
+    # 3. Russian military propaganda, bot insults & hate speech
+    r"хохлы", r"хохол", r"хохлов",
+    r"укры", r"укроп", r"укропы", r"укропов",
+    r"нацисты", r"нацики",
+    r"зеленский", r"зеленского", r"зеля",
+    r"бандеровцы", r"бандеры", r"салорейх",
+    r"сво", r"путин", r"путина", r"россия", r"россии",
+    r"лнр", r"днр", r"денацификация",
+    r"малороссия", r"новороссия", r"крым наш", r"русский мир",
+    r"кастрюли", r"ватники", r"вата"
 ]
 
 DOMAIN_PATTERN = re.compile(r'https?://(?:www\.)?([^/\s]+)')
@@ -60,27 +93,33 @@ async def load_dynamic_blacklists(session_pool: async_sessionmaker[AsyncSession]
         async with session_pool() as session:
             # Check and seed domains
             domains_result = await session.execute(select(BannedDomain.domain))
-            all_domains = [row[0] for row in domains_result.all()]
-            if not all_domains:
-                logger.info("Seeding default banned domains to database...")
-                for d in BANNED_DOMAINS:
+            all_domains = {row[0].lower() for row in domains_result.all()}
+            missing_domains = [d for d in BANNED_DOMAINS if d.lower() not in all_domains]
+            if missing_domains:
+                logger.info(f"Adding {len(missing_domains)} missing default banned domains to database...")
+                for d in missing_domains:
                     session.add(BannedDomain(domain=d))
                 await session.commit()
-                DYNAMIC_BANNED_DOMAINS = {d.lower() for d in BANNED_DOMAINS}
+                # Reload all domains
+                domains_result = await session.execute(select(BannedDomain.domain))
+                DYNAMIC_BANNED_DOMAINS = {row[0].lower() for row in domains_result.all()}
             else:
-                DYNAMIC_BANNED_DOMAINS = {d.lower() for d in all_domains}
+                DYNAMIC_BANNED_DOMAINS = all_domains
 
             # Check and seed keywords
             keywords_result = await session.execute(select(BannedKeyword.keyword))
-            all_keywords = [row[0] for row in keywords_result.all()]
-            if not all_keywords:
-                logger.info("Seeding default spam keywords to database...")
-                for k in SPAM_KEYWORDS:
+            all_keywords = {row[0].lower() for row in keywords_result.all()}
+            missing_keywords = [k for k in SPAM_KEYWORDS if k.lower() not in all_keywords]
+            if missing_keywords:
+                logger.info(f"Adding {len(missing_keywords)} missing default spam keywords to database...")
+                for k in missing_keywords:
                     session.add(BannedKeyword(keyword=k))
                 await session.commit()
-                DYNAMIC_SPAM_KEYWORDS = {k.lower() for k in SPAM_KEYWORDS}
+                # Reload all keywords
+                keywords_result = await session.execute(select(BannedKeyword.keyword))
+                DYNAMIC_SPAM_KEYWORDS = {row[0].lower() for row in keywords_result.all()}
             else:
-                DYNAMIC_SPAM_KEYWORDS = {k.lower() for k in all_keywords}
+                DYNAMIC_SPAM_KEYWORDS = all_keywords
 
             # Compile dynamic pattern
             DYNAMIC_NORMALIZED_KEYWORDS = [normalize_text(k) for k in DYNAMIC_SPAM_KEYWORDS]
