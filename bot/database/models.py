@@ -11,6 +11,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     username: Mapped[str | None] = mapped_column(String(32), nullable=True)
     full_name: Mapped[str] = mapped_column(String(128))
+    total_karma: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Chat(Base):

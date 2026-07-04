@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "safety-chat-bot"
-version = "0.5.2"
+version = "0.6.0"
 description = "AI-powered Telegram moderation and community bot"
 authors = ["Admin <contact@srvrs.top>"]
 
