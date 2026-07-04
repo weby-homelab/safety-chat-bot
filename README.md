@@ -1,4 +1,4 @@
-# 🛡️ Safety-chat-bot v0.5.1
+# 🛡️ Safety-chat-bot
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/weby-homelab/safety-chat-bot?style=flat-square&color=blue)](https://github.com/weby-homelab/safety-chat-bot/releases)
 [![Docker Pulls](https://img.shields.io/docker/pulls/webyhomelab/safety-chat-bot?style=flat-square&color=green)](https://hub.docker.com/r/webyhomelab/safety-chat-bot)
@@ -18,7 +18,7 @@
 </details>
 
 <details>
-<summary><b>🛡️ Детальний опис систем захисту бота (Станом на 07.2026, Версія 0.5.1)</b></summary>
+<summary><b>🛡️ Детальний опис систем захисту бота (Оновлено 07.2026)</b></summary>
 
 Для максимальної протидії сучасним методам спаму, фішингу, порно-ботам та інформаційно-психологічним атакам (ІПСО), у системі реалізовано багаторівневу систему захисту:
 
