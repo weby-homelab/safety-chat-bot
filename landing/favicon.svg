@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+    <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="100%" stop-color="#bd00ff" />
+        </linearGradient>
+    </defs>
+    <!-- Background shape with gradient -->
+    <rect width="32" height="32" rx="8" fill="url(#grad)" />
+    <!-- Shield Icon with alert -->
+    <path d="M16 6s8 2.5 8 6v6c0 4.5-4 7.5-8 9-4-1.5-8-4.5-8-9v-6c0-3.5 8-6 8-6z" fill="#08090d" />
+    <path d="M16 8s6.5 2 6.5 5v5c0 3.8-3.3 6.3-6.5 7.5-3.2-1.2-6.5-3.7-6.5-7.5v-5C9.5 10 16 8 16 8z" fill="url(#grad)" />
+    <!-- Alert exclamation mark -->
+    <rect x="15" y="11" width="2" height="5" rx="1" fill="#08090d" />
+    <circle cx="16" cy="19" r="1.2" fill="#08090d" />
+</svg>

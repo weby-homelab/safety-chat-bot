@@ -63,6 +63,15 @@ SPAM_KEYWORDS = [
 DOMAIN_PATTERN = re.compile(r'https?://(?:www\.)?([^/\s]+)')
 KEYWORDS_PATTERN = re.compile("|".join(SPAM_KEYWORDS), re.IGNORECASE)
 
+PORN_SPAM_KEYWORDS = [
+    r"sex", r"porn", r"nude", r"dating", r"onlyfans", r"webcam", r"escort", r"xxx",
+    r"секс", r"порно", r"интим", r"інтим", r"знакомств", r"шлюх", r"девственниц", 
+    r"проститут", r"сиськ", r"попк", r"эротик", r"еротик", r"минет", r"вирт", r"онлифанс",
+    r"взаимные лайки", r"подписка на", r"слив фото", r"сливы"
+]
+PORN_KEYWORDS_PATTERN = re.compile("|".join(PORN_SPAM_KEYWORDS), re.IGNORECASE)
+RTL_PATTERN = re.compile(r'[\u202e\u200f\u202b\u0600-\u06FF]')
+
 # Dynamic lists loaded from DB
 DYNAMIC_BANNED_DOMAINS = set()
 DYNAMIC_SPAM_KEYWORDS = set()
@@ -173,3 +182,30 @@ def check_fast_heuristics(text: str) -> bool:
         return True
         
     return False
+
+def check_suspicious_profile(first_name: str, last_name: str | None, username: str | None) -> tuple[bool, str | None]:
+    name_parts = [first_name]
+    if last_name:
+        name_parts.append(last_name)
+    if username:
+        name_parts.append(username)
+        
+    full_text = " ".join(name_parts)
+    
+    # 1. Перевірка на RTL/арабські символи
+    if RTL_PATTERN.search(full_text):
+        return True, "RTL or Arabic characters in profile name"
+        
+    # 2. Перевірка на порно-ключові слова
+    if PORN_KEYWORDS_PATTERN.search(full_text):
+        return True, "Porn/spam keywords in profile name"
+        
+    # 3. Перевірка нормалізованого імені на порно-ключові слова
+    normalized_name = normalize_text(full_text)
+    # Також нормалізуємо ключові слова
+    normalized_porn_kws = [normalize_text(kw) for kw in PORN_SPAM_KEYWORDS]
+    for kw in normalized_porn_kws:
+        if kw and kw in normalized_name:
+            return True, f"Normalized profile contains spam keyword: {kw}"
+            
+    return False, None

@@ -68,15 +68,68 @@ async def handle_new_member(message: Message):
     bot = message.bot
     chat_id = message.chat.id
     
+    from_user_is_admin = await is_admin(message)
+    
     for member in message.new_chat_members:
+        # 1. Якщо це бот, доданий не-адміном -> банимо і бота, і того хто додав
         if member.is_bot:
+            if not from_user_is_admin:
+                logger.info(f"Non-admin user {message.from_user.id} tried to add bot {member.id} ({member.username}). Banning both...")
+                try:
+                    await bot.ban_chat_member(chat_id, member.id)
+                except Exception as e:
+                    logger.error(f"Failed to ban bot {member.id}: {e}")
+                
+                try:
+                    await bot.ban_chat_member(chat_id, message.from_user.id)
+                except Exception as e:
+                    logger.error(f"Failed to ban user {message.from_user.id} who added the bot: {e}")
+                
+                try:
+                    await message.delete()
+                except Exception as e:
+                    logger.debug(f"Failed to delete join message for bot: {e}")
+                
+                username_str = f" (@{message.from_user.username})" if message.from_user.username else ""
+                bot_username_str = f" (@{member.username})" if member.username else ""
+                chat_title = message.chat.title if message.chat.title else f"Chat {chat_id}"
+                await send_admin_notification(
+                    f"🚨 <b>Спроба спаму ботами!</b>\n"
+                    f"Користувач <b>{message.from_user.full_name}</b>{username_str} (ID: {message.from_user.id}) "
+                    f"спробував додати бота <b>{member.full_name}</b>{bot_username_str} (ID: {member.id}) в чат <code>{chat_title}</code>.\n"
+                    f"❌ <b>Обидва акаунти були забанені.</b>"
+                )
             continue
             
         user_id = member.id
         full_name = member.full_name
-        username = f" (@{member.username})" if member.username else ""
+        username_val = member.username
+        username = f" (@{username_val})" if username_val else ""
         
-        # 1. Restrict user (mute)
+        # 2. Якщо це звичайний користувач, перевіряємо його профіль на порно-ботів
+        from bot.services.moderation import check_suspicious_profile
+        is_suspicious, reason = check_suspicious_profile(member.first_name, member.last_name, username_val)
+        if is_suspicious:
+            logger.info(f"Suspicious profile detected for user {user_id} ({full_name}): {reason}. Banning immediately.")
+            try:
+                await bot.ban_chat_member(chat_id, user_id)
+            except Exception as e:
+                logger.error(f"Failed to ban suspicious user {user_id}: {e}")
+                
+            try:
+                await message.delete()
+            except Exception as e:
+                logger.debug(f"Failed to delete join message for suspicious user: {e}")
+                
+            chat_title = message.chat.title if message.chat.title else f"Chat {chat_id}"
+            await send_admin_notification(
+                f"🚨 <b>Виявлено та забанено порно-бота!</b>\n"
+                f"Користувач <b>{full_name}</b>{username} (ID: {user_id}) забанений на вході в чат <code>{chat_title}</code>.\n"
+                f"🔎 <b>Причина:</b> {reason}"
+            )
+            continue
+            
+        # 3. Restrict user (mute)
         try:
             await bot.restrict_chat_member(
                 chat_id=chat_id,
@@ -92,7 +145,7 @@ async def handle_new_member(message: Message):
         except Exception as e:
             logger.error(f"Failed to restrict user {user_id}: {e}")
 
-        # 2. Send captcha button
+        # 4. Send captcha button
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="Я людина 👤", callback_data=f"captcha_solve:{user_id}")]
         ])
@@ -104,7 +157,7 @@ async def handle_new_member(message: Message):
             reply_markup=keyboard
         )
         
-        # 3. Schedule timeout
+        # 5. Schedule timeout
         chat_title = message.chat.title if message.chat.title else f"Chat {chat_id}"
         task = asyncio.create_task(
             captcha_timeout_task(bot, chat_id, chat_title, user_id, member.full_name, member.username, message.message_id, captcha_msg.message_id)
