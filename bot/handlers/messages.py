@@ -191,7 +191,7 @@ async def handle_new_member(message: Message):
         captcha_tasks[(chat_id, user_id)] = (captcha_msg.message_id, task)
 
 @router.callback_query(F.data.startswith("captcha_solve:"))
-async def on_captcha_solve(callback: CallbackQuery):
+async def on_captcha_solve(callback: CallbackQuery, session: AsyncSession):
     target_user_id = int(callback.data.split(":")[1])
     clicker_id = callback.from_user.id
     
@@ -226,6 +226,13 @@ async def on_captcha_solve(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Failed to unmute user {clicker_id}: {e}")
         
+    # Register user in DB
+    try:
+        from bot.services.user_service import upsert_user
+        await upsert_user(session, clicker_id, callback.from_user.full_name, callback.from_user.username)
+    except Exception as e:
+        logger.error(f"Failed to upsert user after captcha: {e}")
+        
     # Delete captcha message
     try:
         await callback.message.delete()
@@ -243,7 +250,7 @@ async def on_captcha_solve(callback: CallbackQuery):
         )
 
 @router.callback_query(F.data.startswith("captcha_math:"))
-async def on_captcha_math_solve(callback: CallbackQuery):
+async def on_captcha_math_solve(callback: CallbackQuery, session: AsyncSession):
     parts = callback.data.split(":")
     target_user_id = int(parts[1])
     is_correct = int(parts[2])
@@ -303,6 +310,13 @@ async def on_captcha_math_solve(callback: CallbackQuery):
         unmuted_ok = True
     except Exception as e:
         logger.error(f"Failed to unmute user {clicker_id}: {e}")
+        
+    # Register user in DB
+    try:
+        from bot.services.user_service import upsert_user
+        await upsert_user(session, clicker_id, callback.from_user.full_name, callback.from_user.username)
+    except Exception as e:
+        logger.error(f"Failed to upsert user after captcha: {e}")
         
     try:
         await callback.message.delete()
@@ -455,8 +469,119 @@ async def cmd_report(message: Message, session: AsyncSession):
 async def process_text_message(message: Message, session: AsyncSession):
     if not message.from_user or message.from_user.is_bot:
         return
-        
-    await upsert_user(session, message.from_user.id, message.from_user.full_name, message.from_user.username)
+
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    # Check if user already exists in DB — if not, this is first message => show captcha
+    from sqlalchemy import select
+    result = await session.execute(select(User).where(User.id == user_id))
+    existing_user = result.scalar_one_or_none()
+    logger.info(f"CAPTCHA CHECK: user={user_id} chat_type={message.chat.type} exists={existing_user is not None}")
+
+    if existing_user is None and message.chat.type in ("group", "supergroup"):
+        # Skip captcha for admins
+        try:
+            member = await message.bot.get_chat_member(message.chat.id, user_id)
+            if member.status in ("creator", "administrator"):
+                logger.info(f"Skipping captcha for admin {user_id}")
+                await upsert_user(session, user_id, message.from_user.full_name, message.from_user.username)
+                return
+        except Exception:
+            pass
+
+        bot = message.bot
+        full_name = message.from_user.full_name
+        username_val = message.from_user.username
+        username = f" (@{username_val})" if username_val else ""
+
+        # Check suspicious profile
+        from bot.services.moderation import check_suspicious_profile
+        is_suspicious, reason = check_suspicious_profile(message.from_user.first_name, message.from_user.last_name, username_val)
+        if is_suspicious:
+            logger.info(f"Suspicious profile for user {user_id} ({full_name}): {reason}. Banning.")
+            try:
+                await bot.ban_chat_member(chat_id, user_id)
+            except Exception:
+                pass
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            chat_title = message.chat.title or f"Chat {chat_id}"
+            await send_admin_notification(
+                f"🚨 <b>Виявлено та забанено порно-бота!</b>\n"
+                f"Користувач <b>{full_name}</b>{username} (ID: {user_id}) забанений при першому повідомленні в чаті <code>{chat_title}</code>.\n"
+                f"🔎 <b>Причина:</b> {reason}"
+            )
+            return
+
+        # Mute user
+        try:
+            await bot.restrict_chat_member(
+                chat_id=chat_id, user_id=user_id,
+                permissions=ChatPermissions(
+                    can_send_messages=False,
+                    can_send_media_messages=False,
+                    can_send_other_messages=False,
+                    can_add_web_page_previews=False
+                )
+            )
+            logger.info(f"Muted new user {user_id} in chat {chat_id} (first-message captcha)")
+        except Exception as e:
+            logger.error(f"Failed to restrict user {user_id}: {e}")
+
+        # Send math captcha
+        import random
+        a = random.randint(1, 10)
+        b = random.randint(1, 9)
+        operation = random.choice(["+", "-"])
+        if operation == "+":
+            question = f"Скільки буде {a} додати {b}?"
+            correct_answer = a + b
+        else:
+            if a < b:
+                a, b = b, a
+            question = f"Скільки буде {a} відняти {b}?"
+            correct_answer = a - b
+
+        options = {correct_answer}
+        while len(options) < 3:
+            w = correct_answer + random.choice([-3, -2, -1, 1, 2, 3, 4])
+            if w >= 0:
+                options.add(w)
+        options_list = list(options)
+        random.shuffle(options_list)
+
+        buttons = []
+        for opt in options_list:
+            is_correct = 1 if opt == correct_answer else 0
+            buttons.append(InlineKeyboardButton(text=str(opt), callback_data=f"captcha_math:{user_id}:{is_correct}"))
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+        captcha_msg = await message.answer(
+            f"Привіт, {full_name}{username}! 👋\n\n"
+            f"Ласкаво просимо до нашої спільноти. Для захисту від спам-ботів, будь ласка, розв'яжи математичне завдання протягом **3 хвилин**:\n\n"
+            f"🧮 <b>{question}</b>",
+            reply_markup=keyboard
+        )
+
+        # Schedule timeout
+        chat_title = message.chat.title or f"Chat {chat_id}"
+        task = asyncio.create_task(
+            captcha_timeout_task(bot, chat_id, chat_title, user_id, full_name, username_val, message.message_id, captcha_msg.message_id)
+        )
+        captcha_tasks[(chat_id, user_id)] = (captcha_msg.message_id, task)
+
+        # Delete the user's first message (captcha required before chatting)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+        return
+
+    await upsert_user(session, user_id, message.from_user.full_name, message.from_user.username)
     if message.chat:
         chat_title = message.chat.title if message.chat.title else f"Chat {message.chat.id}"
         await upsert_chat(session, message.chat.id, chat_title)
@@ -465,10 +590,10 @@ async def process_text_message(message: Message, session: AsyncSession):
     if not text_to_check:
         return
 
-    logger.debug(f"Checking message from {message.from_user.id}: {text_to_check[:50]}")
+    logger.debug(f"Checking message from {user_id}: {text_to_check[:50]}")
     
     if check_fast_heuristics(text_to_check):
-        logger.info(f"Spam detected from {message.from_user.id}, deleting...")
+        logger.info(f"Spam detected from {user_id}, deleting...")
         deleted_ok = False
         try:
             await message.delete()
@@ -480,7 +605,7 @@ async def process_text_message(message: Message, session: AsyncSession):
             chat_title = message.chat.title if message.chat.title else f"Chat {message.chat.id}"
             username_str = f" (@{message.from_user.username})" if message.from_user.username else ""
             await send_admin_notification(
-                f"🚫 Видалено спам від <b>{message.from_user.full_name}</b>{username_str} (ID: {message.from_user.id}) у чаті <code>{chat_title}</code>.\n"
+                f"🚫 Видалено спам від <b>{message.from_user.full_name}</b>{username_str} (ID: {user_id}) у чаті <code>{chat_title}</code>.\n"
                 f"Текст:\n<code>{text_to_check[:300]}</code>"
             )
         return

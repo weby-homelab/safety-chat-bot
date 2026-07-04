@@ -30,7 +30,14 @@ async def main():
     # Debug: логування абсолютно всіх вхідних апдейтів
     @dp.update.outer_middleware()
     async def update_logger(handler, event: Update, data):
-        logger.info(f"DEBUG: Incoming update type: {event.event_type}")
+        chat_info = ""
+        if event.message and event.message.chat:
+            chat_info = f" | chat={event.message.chat.id} type={event.message.chat.type}"
+        elif event.callback_query and event.callback_query.message and event.callback_query.message.chat:
+            chat_info = f" | chat={event.callback_query.message.chat.id} type={event.callback_query.message.chat.type}"
+        elif event.chat_member and event.chat_member.chat:
+            chat_info = f" | chat={event.chat_member.chat.id}"
+        logger.info(f"DEBUG: Incoming update type: {event.event_type}{chat_info}")
         return await handler(event, data)
     
     engine, session_pool = create_db_pool(config.database_url.get_secret_value())
@@ -48,7 +55,7 @@ async def main():
     dp.include_router(messages_router)
     
     logger.info("Starting bot...")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types() + ["message_reaction", "chat_member", "my_chat_member"])
 
 if __name__ == "__main__":
     asyncio.run(main())
