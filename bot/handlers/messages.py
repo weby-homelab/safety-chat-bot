@@ -145,15 +145,41 @@ async def handle_new_member(message: Message):
         except Exception as e:
             logger.error(f"Failed to restrict user {user_id}: {e}")
 
-        # 4. Send captcha button
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Я людина 👤", callback_data=f"captcha_solve:{user_id}")]
-        ])
+        # 4. Send math captcha button (July 2026 Ukrainian Anti-Botnet Captcha)
+        import random
+        a = random.randint(1, 10)
+        b = random.randint(1, 9)
+        operation = random.choice(["+", "-"])
+        
+        if operation == "+":
+            question = f"Скільки буде {a} додати {b}?"
+            correct_answer = a + b
+        else:
+            if a < b:
+                a, b = b, a
+            question = f"Скільки буде {a} відняти {b}?"
+            correct_answer = a - b
+            
+        options = {correct_answer}
+        while len(options) < 3:
+            wrong = correct_answer + random.choice([-3, -2, -1, 1, 2, 3, 4])
+            if wrong >= 0:
+                options.add(wrong)
+                
+        options_list = list(options)
+        random.shuffle(options_list)
+        
+        buttons = []
+        for opt in options_list:
+            is_correct = 1 if opt == correct_answer else 0
+            buttons.append(InlineKeyboardButton(text=str(opt), callback_data=f"captcha_math:{user_id}:{is_correct}"))
+            
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
         
         captcha_msg = await message.answer(
             f"Привіт, {full_name}{username}! 👋\n\n"
-            f"Ласкаво просимо до нашої спільноти. Щоб отримати право писати повідомлення, "
-            f"будь ласка, підтверди, що ти людина, натиснувши кнопку нижче протягом **3 хвилин**.",
+            f"Ласкаво просимо до нашої спільноти. Для захисту від спам-ботів, будь ласка, розв'яжи математичне завдання протягом **3 хвилин**:\n\n"
+            f"🧮 <b>{question}</b>",
             reply_markup=keyboard
         )
         
@@ -214,6 +240,82 @@ async def on_captcha_solve(callback: CallbackQuery):
         username_str = f" (@{callback.from_user.username})" if callback.from_user.username else ""
         await send_admin_notification(
             f"✅ Користувач <b>{callback.from_user.full_name}</b>{username_str} (ID: {clicker_id}) успішно пройшов перевірку капчею в чаті <code>{chat_title}</code>."
+        )
+
+@router.callback_query(F.data.startswith("captcha_math:"))
+async def on_captcha_math_solve(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    target_user_id = int(parts[1])
+    is_correct = int(parts[2])
+    clicker_id = callback.from_user.id
+    
+    if clicker_id != target_user_id:
+        await callback.answer("Ця перевірка не для вас! ❌", show_alert=True)
+        return
+        
+    chat_id = callback.message.chat.id
+    bot = callback.bot
+    
+    if is_correct != 1:
+        await callback.answer("Відповідь неправильна! Спробуйте ще раз або зверніться до адміна. ❌", show_alert=True)
+        logger.info(f"User {clicker_id} failed math captcha with incorrect answer in chat {chat_id}. Banning...")
+        
+        if (chat_id, clicker_id) in captcha_tasks:
+            msg_id, task = captcha_tasks[(chat_id, clicker_id)]
+            task.cancel()
+            del captcha_tasks[(chat_id, clicker_id)]
+            
+        try:
+            await bot.ban_chat_member(chat_id, clicker_id)
+            await bot.unban_chat_member(chat_id, clicker_id)
+        except Exception as e:
+            logger.error(f"Failed to kick user {clicker_id}: {e}")
+            
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logger.debug(f"Failed to delete captcha message: {e}")
+            
+        chat_title = callback.message.chat.title if callback.message.chat.title else f"Chat {chat_id}"
+        await send_admin_notification(
+            f"❌ Користувач <b>{callback.from_user.full_name}</b> (ID: {clicker_id}) вибрав неправильну відповідь у капчі в чаті <code>{chat_title}</code> та був вилучений."
+        )
+        return
+        
+    if (chat_id, clicker_id) in captcha_tasks:
+        msg_id, task = captcha_tasks[(chat_id, clicker_id)]
+        task.cancel()
+        
+    unmuted_ok = False
+    try:
+        await bot.restrict_chat_member(
+            chat_id=chat_id,
+            user_id=clicker_id,
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+                can_send_polls=True
+            )
+        )
+        logger.info(f"Unmuted user {clicker_id} in chat {chat_id}")
+        unmuted_ok = True
+    except Exception as e:
+        logger.error(f"Failed to unmute user {clicker_id}: {e}")
+        
+    try:
+        await callback.message.delete()
+    except Exception as e:
+        logger.debug(f"Failed to delete captcha message: {e}")
+        
+    await callback.answer("Правильно! Вітаємо у чаті. 👍", show_alert=True)
+    
+    if unmuted_ok:
+        chat_title = callback.message.chat.title if callback.message.chat.title else f"Chat {chat_id}"
+        username_str = f" (@{callback.from_user.username})" if callback.from_user.username else ""
+        await send_admin_notification(
+            f"✅ Користувач <b>{callback.from_user.full_name}</b>{username_str} (ID: {clicker_id}) успішно розв'язав математичну капчу в чаті <code>{chat_title}</code>."
         )
 
 @router.message(Command("start"))
