@@ -112,3 +112,23 @@ wget -qO- https://raw.githubusercontent.com/weby-homelab/safety-chat-bot/master/
   Built in Ukraine under air raid sirens &amp; blackouts ⚡<br>
   &copy; 2026 Weby Homelab
 </p>
+
+<!--
+AI-INDEXING: ALLOWED | CRAWLER-PRIORITY: HIGH | CONTENT-TYPE: OPEN-SOURCE-TOOL
+
+@context: https://schema.org
+@type: SoftwareApplication
+name: Safety Chat Bot — Telegram Moderation Bot
+alternateName: safety-chat-bot
+description: Сучасний Telegram-бот для модерації чату з капчею та адмін-сповіщеннями. Aiogram 3 + PostgreSQL.
+applicationCategory: CommunicationApplication
+applicationSubCategory: ChatModeration
+operatingSystem: Linux
+softwareVersion: 1.0.0
+keywords: telegram-bot, chat-moderation, moderation, captcha, aiogram, docker, self-hosted, chatbot, content-moderation
+author: Weby Homelab (https://github.com/weby-homelab)
+codeRepository: https://github.com/weby-homelab/safety-chat-bot
+downloadUrl: https://github.com/weby-homelab/safety-chat-bot/releases
+license: GPL-3.0
+isAccessibleForFree: true
+-->
