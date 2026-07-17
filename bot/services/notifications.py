@@ -4,7 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def send_admin_notification(text: str):
+async def send_admin_notification(text: str, reply_markup: dict = None):
     token = os.getenv("TELEGRAM_BOT_TOKEN_ADMIN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID_ADMIN")
     if not token or not chat_id:
@@ -17,6 +17,8 @@ async def send_admin_notification(text: str):
         "text": text,
         "parse_mode": "HTML"
     }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload) as response:
