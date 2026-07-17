@@ -592,7 +592,10 @@ async def process_text_message(message: Message, session: AsyncSession):
 
     logger.debug(f"Checking message from {user_id}: {text_to_check[:50]}")
     
-    if check_fast_heuristics(text_to_check):
+    is_whitelisted = existing_user.is_whitelisted if existing_user else False
+    if is_whitelisted:
+        logger.info(f"User {user_id} is whitelisted, skipping spam check.")
+    elif check_fast_heuristics(text_to_check):
         logger.info(f"Spam detected from {user_id}, deleting...")
         deleted_ok = False
         try:
@@ -604,8 +607,98 @@ async def process_text_message(message: Message, session: AsyncSession):
         if deleted_ok:
             chat_title = message.chat.title if message.chat.title else f"Chat {message.chat.id}"
             username_str = f" (@{message.from_user.username})" if message.from_user.username else ""
+            
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "× підтверджую", "callback_data": f"admin_ban:{chat_id}:{user_id}"},
+                        {"text": "не блокувати", "callback_data": f"admin_whitelist:{chat_id}:{user_id}"}
+                    ]
+                ]
+            }
+            
             await send_admin_notification(
                 f"🚫 Видалено спам від <b>{message.from_user.full_name}</b>{username_str} (ID: {user_id}) у чаті <code>{chat_title}</code>.\n"
-                f"Текст:\n<code>{text_to_check[:300]}</code>"
+                f"Текст:\n<code>{text_to_check[:300]}</code>",
+                reply_markup=keyboard
             )
         return
+
+
+@router.callback_query(F.data.startswith("admin_ban:"))
+async def on_admin_ban(callback: CallbackQuery, session: AsyncSession, main_bot: Bot):
+    parts = callback.data.split(":")
+    chat_id = int(parts[1])
+    user_id = int(parts[2])
+    
+    try:
+        await main_bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+        logger.info(f"Admin {callback.from_user.id} banned user {user_id} in chat {chat_id}")
+        await callback.answer("Користувача успішно забанено! 🚫", show_alert=True)
+    except Exception as e:
+        logger.error(f"Failed to ban user {user_id} in chat {chat_id}: {e}")
+        await callback.answer(f"Помилка при бані: {e}", show_alert=True)
+        return
+        
+    new_text = callback.message.text or ""
+    admin_name = callback.from_user.full_name
+    admin_username = f" (@{callback.from_user.username})" if callback.from_user.username else ""
+    
+    if "Підтверджено" not in new_text:
+        new_text += f"\n\n✅ <b>Підтверджено:</b> адмін <b>{admin_name}</b>{admin_username} забанив користувача."
+        
+    try:
+        await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+    except Exception as e:
+        logger.error(f"Failed to edit message: {e}")
+
+
+@router.callback_query(F.data.startswith("admin_whitelist:"))
+async def on_admin_whitelist(callback: CallbackQuery, session: AsyncSession, main_bot: Bot):
+    parts = callback.data.split(":")
+    chat_id = int(parts[1])
+    user_id = int(parts[2])
+    
+    try:
+        from bot.database.models import User
+        from sqlalchemy import select
+        
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user:
+            user.is_whitelisted = True
+            user_name = user.full_name
+        else:
+            import re
+            name_match = re.search(r"Видалено спам від <b>(.*?)</b>", callback.message.text or "")
+            full_name = name_match.group(1) if name_match else "Користувач"
+            
+            user = User(id=user_id, full_name=full_name, is_whitelisted=True)
+            session.add(user)
+            user_name = full_name
+            
+        await session.commit()
+        logger.info(f"User {user_id} whitelisted by admin {callback.from_user.id}")
+        
+        try:
+            await main_bot.unban_chat_member(chat_id=chat_id, user_id=user_id, only_if_banned=True)
+        except Exception:
+            pass
+            
+        await callback.answer("Користувача додано в білий список! 🟢", show_alert=True)
+    except Exception as e:
+        logger.error(f"Failed to whitelist user {user_id}: {e}")
+        await callback.answer(f"Помилка при додаванні в білий список: {e}", show_alert=True)
+        return
+        
+    new_text = callback.message.text or ""
+    admin_name = callback.from_user.full_name
+    admin_username = f" (@{callback.from_user.username})" if callback.from_user.username else ""
+    
+    if "білий список" not in new_text:
+        new_text += f"\n\n🟢 <b>Не блокувати:</b> адмін <b>{admin_name}</b>{admin_username} додав користувача {user_name} до білого списку."
+        
+    try:
+        await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+    except Exception as e:
+        logger.error(f"Failed to edit message: {e}")

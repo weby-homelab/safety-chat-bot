@@ -54,8 +54,20 @@ async def main():
     # Handlers
     dp.include_router(messages_router)
     
+    # Concurrently poll admin bot if configured and different
+    import os
+    admin_token = os.getenv("TELEGRAM_BOT_TOKEN_ADMIN")
+    bots = [bot]
+    if admin_token and admin_token != config.bot_token.get_secret_value():
+        try:
+            admin_bot = Bot(token=admin_token)
+            bots.append(admin_bot)
+            logger.info("Admin bot initialized and added to concurrently polled bots.")
+        except Exception as e:
+            logger.error(f"Failed to initialize admin bot: {e}")
+            
     logger.info("Starting bot...")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types() + ["message_reaction", "chat_member", "my_chat_member"])
+    await dp.start_polling(*bots, main_bot=bot, allowed_updates=dp.resolve_used_update_types() + ["message_reaction", "chat_member", "my_chat_member"])
 
 if __name__ == "__main__":
     asyncio.run(main())
