@@ -592,10 +592,18 @@ async def process_text_message(message: Message, session: AsyncSession):
 
     logger.debug(f"Checking message from {user_id}: {text_to_check[:50]}")
     
+    extra_urls = []
+    entities = message.entities or message.caption_entities or []
+    for ent in entities:
+        if ent.type == "url":
+            extra_urls.append(text_to_check[ent.offset : ent.offset + ent.length])
+        elif ent.type == "text_link" and ent.url:
+            extra_urls.append(ent.url)
+
     is_whitelisted = existing_user.is_whitelisted if existing_user else False
     if is_whitelisted:
         logger.info(f"User {user_id} is whitelisted, skipping spam check.")
-    elif check_fast_heuristics(text_to_check):
+    elif check_fast_heuristics(text_to_check, extra_urls=extra_urls):
         logger.info(f"Spam detected from {user_id}, deleting...")
         deleted_ok = False
         try:
@@ -619,6 +627,60 @@ async def process_text_message(message: Message, session: AsyncSession):
             
             await send_admin_notification(
                 f"🚫 Видалено спам від <b>{message.from_user.full_name}</b>{username_str} (ID: {user_id}) у чаті <code>{chat_title}</code>.\n"
+                f"Текст:\n<code>{text_to_check[:300]}</code>",
+                reply_markup=keyboard
+            )
+        return
+
+
+@router.edited_message()
+async def process_edited_message(message: Message, session: AsyncSession):
+    if not message.from_user or message.from_user.is_bot:
+        return
+
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    from sqlalchemy import select
+    result = await session.execute(select(User).where(User.id == user_id))
+    existing_user = result.scalar_one_or_none()
+    if existing_user and existing_user.is_whitelisted:
+        return
+
+    text_to_check = message.text or message.caption or ""
+    if not text_to_check:
+        return
+
+    extra_urls = []
+    entities = message.entities or message.caption_entities or []
+    for ent in entities:
+        if ent.type == "url":
+            extra_urls.append(text_to_check[ent.offset : ent.offset + ent.length])
+        elif ent.type == "text_link" and ent.url:
+            extra_urls.append(ent.url)
+
+    if check_fast_heuristics(text_to_check, extra_urls=extra_urls):
+        logger.info(f"Spam detected in edited message from {user_id}, deleting...")
+        deleted_ok = False
+        try:
+            await message.delete()
+            deleted_ok = True
+        except Exception as e:
+            logger.error(f"Failed to delete edited message: {e}")
+
+        if deleted_ok:
+            chat_title = message.chat.title if message.chat.title else f"Chat {message.chat.id}"
+            username_str = f" (@{message.from_user.username})" if message.from_user.username else ""
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "× підтверджую", "callback_data": f"admin_ban:{chat_id}:{user_id}"},
+                        {"text": "не блокувати", "callback_data": f"admin_whitelist:{chat_id}:{user_id}"}
+                    ]
+                ]
+            }
+            await send_admin_notification(
+                f"🚫 <b>Видалено спам у відредагованому повідомленні</b> від <b>{message.from_user.full_name}</b>{username_str} (ID: {user_id}) у чаті <code>{chat_title}</code>.\n"
                 f"Текст:\n<code>{text_to_check[:300]}</code>",
                 reply_markup=keyboard
             )

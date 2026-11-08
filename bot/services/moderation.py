@@ -1,5 +1,6 @@
 import re
 import logging
+import unicodedata
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from bot.database.models import BannedDomain, BannedKeyword
@@ -12,6 +13,11 @@ BANNED_DOMAINS = {
     "t.me/crypto", "t.me/joinchat", "cutt.ly", "rb.gy",
     "is.gd", "t.co", "bit.do", "vk.cc", "rebrand.ly", "scam.link",
     "free-money.club", "cryptogive.io"
+}
+
+# Домени білого списку (виключаються з перевірки TLD та підрядків)
+WHITELISTED_DOMAINS = {
+    "srvrs.top", "srvrs.online", "weby.guru", "github.com", "t.me"
 }
 
 # Ключові слова для фільтрації спаму та російської агресії/ботів (за замовчуванням)
@@ -67,7 +73,6 @@ SPAM_KEYWORDS = [
 ]
 
 DOMAIN_PATTERN = re.compile(r'https?://(?:www\.)?([^/\s]+)')
-KEYWORDS_PATTERN = re.compile("|".join(SPAM_KEYWORDS), re.IGNORECASE)
 
 PORN_SPAM_KEYWORDS = [
     r"sex", r"porn", r"nude", r"dating", r"onlyfans", r"webcam", r"escort", r"xxx",
@@ -81,29 +86,74 @@ RTL_PATTERN = re.compile(r'[\u202e\u200f\u202b\u0600-\u06FF]')
 # Dynamic lists loaded from DB
 DYNAMIC_BANNED_DOMAINS = set()
 DYNAMIC_SPAM_KEYWORDS = set()
-DYNAMIC_NORMALIZED_KEYWORDS = []
-DYNAMIC_NORMALIZED_PATTERN = None
+DYNAMIC_KEYWORDS_PATTERN = None
 
-def normalize_text(text: str) -> str:
+def clean_and_normalize(text: str) -> str:
+    """
+    Нормалізує юнікод (NFKC), видаляє невидимі/RTL символи,
+    переводить у нижній регістр та мапить латинські гомогліфи на кирилицю.
+    Зберігає пробіли та межі слів.
+    """
     if not text:
         return ""
+    text = unicodedata.normalize("NFKC", text)
+    text = re.sub(r"[\u200b-\u200f\u202a-\u202e\uFEFF]", "", text)
     text = text.lower()
-    # Map common Latin lookalikes to Cyrillic
     homoglyphs = {
         'a': 'а', 'c': 'с', 'e': 'е', 'i': 'і', 'o': 'о', 'p': 'р', 'x': 'х', 'y': 'у',
-        '3': 'з', '0': 'о', '1': 'і'
+        '3': 'з', '0': 'о', '1': 'і', 'k': 'к', 'b': 'б', 'm': 'м', 'h': 'н', 't': 'т'
     }
     for lat, cyr in homoglyphs.items():
         text = text.replace(lat, cyr)
-    # Remove whitespace, punctuation, and bypass noise characters
-    text = re.sub(r'[\s\-_*.,!?()\[\]{}|\\/@#+=~`%^&;:\'"<>?₴$€№]', '', text)
     return text
 
-NORMALIZED_SPAM_KEYWORDS = [normalize_text(kw) for kw in SPAM_KEYWORDS]
-NORMALIZED_KEYWORDS_PATTERN = re.compile("|".join(NORMALIZED_SPAM_KEYWORDS), re.IGNORECASE)
+def deobfuscate_spaced_letters(text: str) -> str:
+    """
+    Виявляє спроби спамерів розірвати ключові слова через пробіли або розділові знаки
+    (наприклад: 'с . в . о' -> 'сво', 'к а з и н о' -> 'казино', '1 x b e t' -> '1xbet').
+    Повноцінні слова (довжина >= 2, такі як 'у вас воно' чи 'у нас в одній')
+    зберігають свої пробіли та межі слів!
+    """
+    def replacer(match: re.Match) -> str:
+        full = match.group(0)
+        tokens = [t for t in re.split(r"[\s._\-*]+", full) if t]
+        if all(len(t) == 1 for t in tokens):
+            return "".join(tokens)
+        return full
+    return re.sub(r"\b[\wа-яёіїє](?:[\s._\-*]+[\wа-яёіїє])+\b", replacer, text)
+
+def normalize_text(text: str) -> str:
+    """
+    Збереження зворотної сумісності normalize_text без втрати меж слів.
+    """
+    if not text:
+        return ""
+    cleaned = clean_and_normalize(text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return deobfuscate_spaced_letters(cleaned)
+
+def compile_keywords_pattern(keywords: set[str] | list[str]) -> re.Pattern | None:
+    """
+    Компілює регулярний вираз для пошуку ключових слів з обов'язковими
+    юнікод-межами слів (?<![a-zа-яёіїє0-9]) та (?![a-zа-яёіїє0-9]).
+    """
+    cleaned_kws = set()
+    for kw in keywords:
+        c = clean_and_normalize(kw).strip()
+        if c:
+            parts = [re.escape(p) for p in c.split()]
+            cleaned_kws.add(r"\s+".join(parts))
+    if not cleaned_kws:
+        return None
+    sorted_kws = sorted(cleaned_kws, key=len, reverse=True)
+    joined = "|".join(sorted_kws)
+    return re.compile(rf"(?<![a-zа-яёіїє0-9])(?:{joined})(?![a-zа-яёіїє0-9])", re.IGNORECASE)
+
+# Static pattern compiled on import
+STATIC_KEYWORDS_PATTERN = compile_keywords_pattern(SPAM_KEYWORDS)
 
 async def load_dynamic_blacklists(session_pool: async_sessionmaker[AsyncSession]):
-    global DYNAMIC_BANNED_DOMAINS, DYNAMIC_SPAM_KEYWORDS, DYNAMIC_NORMALIZED_KEYWORDS, DYNAMIC_NORMALIZED_PATTERN
+    global DYNAMIC_BANNED_DOMAINS, DYNAMIC_SPAM_KEYWORDS, DYNAMIC_KEYWORDS_PATTERN
     try:
         async with session_pool() as session:
             # Check and seed domains
@@ -115,7 +165,6 @@ async def load_dynamic_blacklists(session_pool: async_sessionmaker[AsyncSession]
                 for d in missing_domains:
                     session.add(BannedDomain(domain=d))
                 await session.commit()
-                # Reload all domains
                 domains_result = await session.execute(select(BannedDomain.domain))
                 DYNAMIC_BANNED_DOMAINS = {row[0].lower() for row in domains_result.all()}
             else:
@@ -130,63 +179,80 @@ async def load_dynamic_blacklists(session_pool: async_sessionmaker[AsyncSession]
                 for k in missing_keywords:
                     session.add(BannedKeyword(keyword=k))
                 await session.commit()
-                # Reload all keywords
                 keywords_result = await session.execute(select(BannedKeyword.keyword))
                 DYNAMIC_SPAM_KEYWORDS = {row[0].lower() for row in keywords_result.all()}
             else:
                 DYNAMIC_SPAM_KEYWORDS = all_keywords
 
-            # Compile dynamic pattern
-            DYNAMIC_NORMALIZED_KEYWORDS = [normalize_text(k) for k in DYNAMIC_SPAM_KEYWORDS]
-            if DYNAMIC_NORMALIZED_KEYWORDS:
-                DYNAMIC_NORMALIZED_PATTERN = re.compile("|".join(DYNAMIC_NORMALIZED_KEYWORDS), re.IGNORECASE)
-            else:
-                DYNAMIC_NORMALIZED_PATTERN = None
-                
+            # Compile dynamic pattern with word boundaries
+            DYNAMIC_KEYWORDS_PATTERN = compile_keywords_pattern(DYNAMIC_SPAM_KEYWORDS)
             logger.info(f"Loaded {len(DYNAMIC_BANNED_DOMAINS)} domains and {len(DYNAMIC_SPAM_KEYWORDS)} keywords into cache.")
     except Exception as e:
         logger.error(f"Error loading dynamic blacklists from database: {e}")
-        # Fallback to static lists in case of DB failure
         DYNAMIC_BANNED_DOMAINS = {d.lower() for d in BANNED_DOMAINS}
         DYNAMIC_SPAM_KEYWORDS = {k.lower() for k in SPAM_KEYWORDS}
-        DYNAMIC_NORMALIZED_PATTERN = NORMALIZED_KEYWORDS_PATTERN
+        DYNAMIC_KEYWORDS_PATTERN = STATIC_KEYWORDS_PATTERN
 
-def check_fast_heuristics(text: str) -> bool:
+def check_domains_and_links(text: str, extra_urls: list[str] | None = None) -> bool:
+    """
+    Перевіряє домени, TLD та посилання-запрошення у тексті та extra_urls (entities).
+    """
+    urls_to_check = list(extra_urls or [])
+    url_pattern = re.compile(r"(?:https?://)?(?:[a-z0-9\-]+\.)+[a-z0-9\-]{2,}(?:/[^\s]*)?", re.IGNORECASE)
+    for m in url_pattern.finditer(text or ""):
+        urls_to_check.append(m.group(0))
+
+    if text and any(inv in text.lower() for inv in ["t.me/+", "t.me/joinchat"]):
+        return True
+
+    for raw in urls_to_check:
+        clean = raw.lower().strip()
+        clean = re.sub(r"^https?://(?:www\.)?", "", clean)
+
+        if any(inv in clean for inv in ["t.me/+", "t.me/joinchat"]):
+            return True
+
+        host = clean.split("/")[0].split(":")[0]
+
+        if any(host == w or host.endswith("." + w) for w in WHITELISTED_DOMAINS):
+            continue
+
+        all_banned = BANNED_DOMAINS.union(DYNAMIC_BANNED_DOMAINS)
+        for b in all_banned:
+            b_clean = b.lower().strip()
+            if b_clean.startswith("."):
+                if host.endswith(b_clean):
+                    return True
+            elif host == b_clean or host.endswith("." + b_clean) or b_clean in clean:
+                return True
+
+    return False
+
+def check_fast_heuristics(text: str, extra_urls: list[str] | None = None) -> bool:
+    if not text and not extra_urls:
+        return False
+
+    # 1. Перевірка доменів та посилань
+    if check_domains_and_links(text or "", extra_urls=extra_urls):
+        return True
+
     if not text:
         return False
-        
-    text_lower = text.lower()
-    
-    # Mask whitelisted domains to prevent false positives with generic TLD blocks (.top, .online)
-    text_for_domains = text_lower
-    for whitelist in ["srvrs.top", "srvrs.online"]:
-        text_for_domains = text_for_domains.replace(whitelist, "[whitelist]")
-    
-    # 1. Перевірка за доменами (static + dynamic)
-    for banned in BANNED_DOMAINS:
-        if banned in text_for_domains:
-            return True
-    for banned in DYNAMIC_BANNED_DOMAINS:
-        if banned in text_for_domains:
-            return True
-            
-    # 2. Перевірка за посиланнями на канали
-    if any(banned in text_lower for banned in ["t.me/+", "t.me/joinchat"]):
-        return True
 
-    # 3. Перевірка за ключовими словами на сирому тексті
-    if KEYWORDS_PATTERN.search(text_lower):
-        return True
-    if DYNAMIC_NORMALIZED_PATTERN and DYNAMIC_NORMALIZED_PATTERN.search(text_lower):
-        return True
-        
-    # 4. Перевірка за ключовими словами на нормалізованому тексті
-    normalized_text = normalize_text(text_lower)
-    if NORMALIZED_KEYWORDS_PATTERN.search(normalized_text):
-        return True
-    if DYNAMIC_NORMALIZED_PATTERN and DYNAMIC_NORMALIZED_PATTERN.search(normalized_text):
-        return True
-        
+    # 2. Нормалізація тексту зі збереженням меж слів
+    normalized_text = clean_and_normalize(text)
+    deobfuscated_text = deobfuscate_spaced_letters(normalized_text)
+
+    # 3. Перевірка статичних ключових слів з обов'язковими межами слів
+    if STATIC_KEYWORDS_PATTERN:
+        if STATIC_KEYWORDS_PATTERN.search(normalized_text) or STATIC_KEYWORDS_PATTERN.search(deobfuscated_text):
+            return True
+
+    # 4. Перевірка динамічних ключових слів з обов'язковими межами слів
+    if DYNAMIC_KEYWORDS_PATTERN:
+        if DYNAMIC_KEYWORDS_PATTERN.search(normalized_text) or DYNAMIC_KEYWORDS_PATTERN.search(deobfuscated_text):
+            return True
+
     return False
 
 def check_suspicious_profile(first_name: str, last_name: str | None, username: str | None) -> tuple[bool, str | None]:
@@ -207,11 +273,14 @@ def check_suspicious_profile(first_name: str, last_name: str | None, username: s
         return True, "Porn/spam keywords in profile name"
         
     # 3. Перевірка нормалізованого імені на порно-ключові слова
-    normalized_name = normalize_text(full_text)
-    # Також нормалізуємо ключові слова
-    normalized_porn_kws = [normalize_text(kw) for kw in PORN_SPAM_KEYWORDS]
-    for kw in normalized_porn_kws:
-        if kw and kw in normalized_name:
-            return True, f"Normalized profile contains spam keyword: {kw}"
+    normalized_name = clean_and_normalize(full_text)
+    deobfuscated_name = deobfuscate_spaced_letters(normalized_name)
+    stripped_name = re.sub(r'[\s\-_*.,!?()\[\]{}|\\/@#+=~`%^&;:\'"<>?₴$€№]', '', normalized_name)
+
+    for kw in PORN_SPAM_KEYWORDS:
+        kw_clean = clean_and_normalize(kw).strip()
+        if kw_clean:
+            if kw_clean in normalized_name or kw_clean in deobfuscated_name or kw_clean in stripped_name:
+                return True, f"Normalized profile contains spam keyword: {kw}"
             
     return False, None
